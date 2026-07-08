@@ -1,0 +1,40 @@
+{
+  "lexicon": 1,
+  "id": "com.beckitrue.codenames.guess",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An operative's guess: naming one board card. Posted by the operative agent to its own repo; only takes effect once accepted by the game engine.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["game", "team", "word", "createdAt"],
+        "properties": {
+          "game": {
+            "type": "string",
+            "description": "Game ID this guess belongs to"
+          },
+          "team": {
+            "type": "string",
+            "enum": ["red", "blue"],
+            "description": "The guesser's team"
+          },
+          "word": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "The board word being guessed"
+          },
+          "reasoning": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Optional: the agent's stated reasoning, for human observers"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

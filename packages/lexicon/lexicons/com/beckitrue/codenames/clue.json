@@ -1,0 +1,46 @@
+{
+  "lexicon": 1,
+  "id": "com.beckitrue.codenames.clue",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A spymaster's clue: one word and a count, hinting at cards on the board. Posted by the spymaster agent to its own repo; only takes effect once accepted by the game engine.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["game", "team", "word", "count", "createdAt"],
+        "properties": {
+          "game": {
+            "type": "string",
+            "description": "Game ID this clue belongs to"
+          },
+          "team": {
+            "type": "string",
+            "enum": ["red", "blue"],
+            "description": "The clue-giver's team"
+          },
+          "word": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "The one-word clue. Must not be a word on the board."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9,
+            "description": "How many board cards the clue relates to"
+          },
+          "reasoning": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Optional: the agent's stated reasoning, for human observers"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "lexicon": 1,
+  "id": "com.beckitrue.codenames.gameState",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "Canonical game state snapshot, published by the referee (game engine) agent after every accepted move. The public record of what actually happened — including denials.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["game", "turn", "phase", "board", "lastEvent", "createdAt"],
+        "properties": {
+          "game": {
+            "type": "string",
+            "description": "Game ID"
+          },
+          "turn": {
+            "type": "string",
+            "enum": ["red", "blue"],
+            "description": "Whose turn it is"
+          },
+          "phase": {
+            "type": "string",
+            "enum": ["awaiting_clue", "awaiting_guesses", "finished"],
+            "description": "Current phase of the turn"
+          },
+          "board": {
+            "type": "array",
+            "items": { "type": "ref", "ref": "#card" },
+            "description": "The 25 board cards. Card type is only present once revealed — the key stays secret."
+          },
+          "currentClue": {
+            "type": "ref",
+            "ref": "#clueRef",
+            "description": "The active clue, if in guessing phase"
+          },
+          "winner": {
+            "type": "string",
+            "enum": ["red", "blue"],
+            "description": "Winning team, if finished"
+          },
+          "lastEvent": {
+            "type": "ref",
+            "ref": "#event",
+            "description": "The move (or denial) that produced this snapshot"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    },
+    "card": {
+      "type": "object",
+      "required": ["word", "revealed"],
+      "properties": {
+        "word": { "type": "string" },
+        "revealed": { "type": "boolean" },
+        "cardType": {
+          "type": "string",
+          "enum": ["red", "blue", "bystander", "assassin"],
+          "description": "Only present when revealed"
+        }
+      }
+    },
+    "clueRef": {
+      "type": "object",
+      "required": ["word", "count", "team"],
+      "properties": {
+        "word": { "type": "string" },
+        "count": { "type": "integer" },
+        "team": { "type": "string", "enum": ["red", "blue"] }
+      }
+    },
+    "event": {
+      "type": "object",
+      "description": "What happened: an accepted move, or a denied attempt. Denials are first-class events — transparency is the point.",
+      "required": ["kind", "actor", "outcome"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["clue", "guess", "pass", "game_start", "game_end"]
+        },
+        "actor": {
+          "type": "string",
+          "description": "DID of the acting agent"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": ["accepted", "denied_authz", "denied_rules"],
+          "description": "denied_authz = FGA said no; denied_rules = authorized but illegal move"
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Human-readable summary (e.g. the denial reason)"
+        }
+      }
+    }
+  }
+}

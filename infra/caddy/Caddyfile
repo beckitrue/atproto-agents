@@ -1,0 +1,21 @@
+# Caddy fronts everything with automatic TLS.
+# DOMAIN comes from the compose environment (e.g. beckitrue.com).
+
+# The PDS itself
+pds.{$DOMAIN} {
+	reverse_proxy pds:3000
+}
+
+# Agent handles resolve via the PDS (/.well-known/atproto-did)
+red-spymaster.{$DOMAIN},
+red-operative.{$DOMAIN},
+blue-spymaster.{$DOMAIN},
+blue-operative.{$DOMAIN},
+referee.{$DOMAIN} {
+	reverse_proxy pds:3000
+}
+
+# Game engine API
+game.{$DOMAIN} {
+	reverse_proxy engine:8080
+}

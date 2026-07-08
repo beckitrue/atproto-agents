@@ -1,0 +1,21 @@
+{
+  "name": "@atproto-agents/agents",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Codenames-playing agents: AT Proto identity, Auth0 credentials, Claude brain with scripted fallback",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "agent": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.0",
+    "@atproto-agents/lexicon": "*",
+    "@atproto/api": "^0.13.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.0"
+  }
+}

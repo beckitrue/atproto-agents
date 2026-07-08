@@ -1,0 +1,30 @@
+{
+  "lexicon": 1,
+  "id": "com.beckitrue.codenames.pass",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "An operative team ending its guessing turn voluntarily.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["game", "team", "createdAt"],
+        "properties": {
+          "game": {
+            "type": "string",
+            "description": "Game ID"
+          },
+          "team": {
+            "type": "string",
+            "enum": ["red", "blue"],
+            "description": "The passing team"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

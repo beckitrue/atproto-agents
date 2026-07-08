@@ -1,0 +1,22 @@
+model
+  schema 1.1
+
+type agent
+
+type game
+  relations
+    # Standing role assignments — written once at game creation
+    define spymaster_red: [agent]
+    define operative_red: [agent]
+    define spymaster_blue: [agent]
+    define operative_blue: [agent]
+
+    # Ephemeral turn grants — written by the engine at turn start,
+    # deleted at turn end. Authority appears and disappears live.
+    define active_clue_giver: [agent]
+    define active_guesser: [agent]
+
+    # The permissions the engine checks
+    define can_give_clue: active_clue_giver
+    define can_guess: active_guesser
+    define can_view_key: spymaster_red or spymaster_blue

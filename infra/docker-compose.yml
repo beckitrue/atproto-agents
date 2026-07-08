@@ -1,0 +1,65 @@
+# The whole server-side stack: PDS + game engine behind Caddy.
+# Runs identically on the demo EC2 box and on your own machine/server.
+#
+#   cp .env.example .env   # fill in secrets
+#   docker compose up -d
+#
+# DNS (Cloudflare, DNS-only for the apex handles you add):
+#   pds.<domain>            A  <server IP>   — the PDS
+#   game.<domain>           A  <server IP>   — game engine API
+#   <agent>.<domain>        A  <server IP>   — one per agent handle
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN=${DOMAIN}
+
+  pds:
+    image: ghcr.io/bluesky-social/pds:latest
+    restart: unless-stopped
+    volumes:
+      - pds_data:/pds
+    environment:
+      - PDS_HOSTNAME=pds.${DOMAIN}
+      - PDS_ADMIN_PASSWORD=${PDS_ADMIN_PASSWORD}
+      - PDS_JWT_SECRET=${PDS_JWT_SECRET}
+      - PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=${PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX}
+      - PDS_DATA_DIRECTORY=/pds
+      - PDS_BLOBSTORE_DISK_LOCATION=/pds/blocks
+      - PDS_DID_PLC_URL=https://plc.directory
+      - PDS_BSKY_APP_VIEW_URL=https://api.bsky.app
+      - PDS_BSKY_APP_VIEW_DID=did:web:api.bsky.app
+      - PDS_REPORT_SERVICE_URL=https://mod.bsky.app
+      - PDS_REPORT_SERVICE_DID=did:plc:ar7c4by46qjdydhdevvrndac
+      - PDS_CRAWLERS=https://bsky.network
+      - LOG_ENABLED=true
+
+  engine:
+    build:
+      context: ..
+      dockerfile: infra/engine.Dockerfile
+    restart: unless-stopped
+    environment:
+      - PORT=8080
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
+      - FGA_API_URL=${FGA_API_URL}
+      - FGA_STORE_ID=${FGA_STORE_ID}
+      - FGA_MODEL_ID=${FGA_MODEL_ID}
+      - FGA_CLIENT_ID=${FGA_CLIENT_ID}
+      - FGA_CLIENT_SECRET=${FGA_CLIENT_SECRET}
+      - FGA_API_TOKEN_ISSUER=${FGA_API_TOKEN_ISSUER}
+      - FGA_API_AUDIENCE=${FGA_API_AUDIENCE}
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pds_data:
