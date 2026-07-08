@@ -8,10 +8,14 @@
  * <PREFIX>_AUTH0_CLIENT_ID/SECRET per agent, GAME_ENGINE_URL,
  * ANTHROPIC_API_KEY (+ optional ANTHROPIC_MODEL) for --brain llm.
  *
- * TODO(week 2): after each accepted move, write the move record to the
- * agent's own PDS repo and post the Bluesky mirror (runner onMove hook).
+ * When <PREFIX>_PDS_PASSWORD is set (scripts/set-agent-pds-passwords.mjs),
+ * every accepted move is also published to the agent's own PDS repo:
+ * a custom lexicon record + a Bluesky mirror post with the reasoning.
+ * Disable with --no-post.
  */
-import { GAME_ENGINE_URL, ROSTER } from './config.js'
+import { GAME_ENGINE_URL, PDS_URL, ROSTER } from './config.js'
+import type { AgentConfig } from './config.js'
+import { MovePoster } from './poster.js'
 import { ScriptedBrain, withFallback } from './brain.js'
 import type { Brain } from './brain.js'
 import { LlmBrain } from './llm.js'
@@ -40,7 +44,11 @@ const seed = [...agent.name].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0
 const scripted = new ScriptedBrain(seed)
 let brain: Brain = scripted
 if (brainKind === 'llm') {
-  brain = withFallback(new LlmBrain(), scripted, (err) =>
+  const llm = new LlmBrain({
+    // PRIVATE thinking — local terminal only (spymaster thinking sees the key)
+    onThinking: (t) => console.log(`[${agent.name}] 🧠 ${t.replaceAll('\n', ' ').slice(0, 500)}`),
+  })
+  brain = withFallback(llm, scripted, (err) =>
     console.error(`[${agent.name}] LLM failed (${err.message}) — falling back to scripted`),
   )
 } else if (brainKind !== 'scripted') {
@@ -50,16 +58,43 @@ if (brainKind === 'llm') {
 
 const engine = new EngineClient(GAME_ENGINE_URL, tokenProviderFromEnv(agent.envPrefix))
 
-console.log(`[${agent.name}] ${agent.team} ${agent.role} <${agent.handle}> brain=${brain.kind} game=${gameId}`)
+const pdsPassword = process.env[`${agent.envPrefix}_PDS_PASSWORD`]
+const posting = Boolean(pdsPassword) && !process.argv.includes('--no-post')
+const poster = posting
+  ? new MovePoster({
+      service: PDS_URL,
+      handle: agent.handle,
+      password: pdsPassword!,
+      team: agent.team,
+      log: (m) => console.log(`[${agent.name}] 📡 ${m}`),
+    })
+  : null
 
-runAgent({
-  engine,
-  brain,
-  rulesFallback: scripted,
-  agent,
-  gameId,
-  ...(arg('--poll') ? { pollMs: Number(arg('--poll')) } : {}),
-}).catch((err) => {
+console.log(
+  `[${agent.name}] ${agent.team} ${agent.role} <${agent.handle}> brain=${brain.kind} game=${gameId} posting=${posting}`,
+)
+
+async function main(who: AgentConfig, game: string) {
+  await poster?.login()
+  await runAgent({
+    engine,
+    brain,
+    rulesFallback: scripted,
+    agent: who,
+    gameId: game,
+    ...(arg('--poll') ? { pollMs: Number(arg('--poll')) } : {}),
+    // Speech is free — but never let a PDS hiccup stall the game itself.
+    onMove: async (move) => {
+      try {
+        await poster?.postMove(move)
+      } catch (err) {
+        console.error(`[${who.name}] PDS post failed: ${(err as Error).message}`)
+      }
+    },
+  })
+}
+
+main(agent, gameId).catch((err) => {
   console.error(`[${agent.name}] fatal: ${err.message}`)
   process.exit(1)
 })

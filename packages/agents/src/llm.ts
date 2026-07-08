@@ -74,27 +74,38 @@ export interface LlmBrainOptions {
   /** Injectable for tests. Defaults to a client using ANTHROPIC_API_KEY. */
   client?: Anthropic
   model?: string
+  /**
+   * Receives Claude's summarized thinking per move. PRIVATE — the
+   * spymaster's thinking sees the key card. Log locally (the on-stage
+   * laptop terminal), never post it.
+   */
+  onThinking?: (summary: string) => void
 }
 
 export class LlmBrain implements Brain {
   readonly kind = 'llm'
   private readonly client: Anthropic
   private readonly model: string
+  private readonly onThinking?: (summary: string) => void
 
   constructor(opts: LlmBrainOptions = {}) {
     this.client = opts.client ?? new Anthropic()
     this.model = opts.model ?? process.env.ANTHROPIC_MODEL ?? 'claude-opus-4-8'
+    this.onThinking = opts.onThinking
   }
 
   private async decide<T>(system: string, prompt: string, schema: Record<string, unknown>): Promise<T> {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 16000,
-      thinking: { type: 'adaptive' },
+      thinking: { type: 'adaptive', display: 'summarized' },
       system,
       output_config: { format: { type: 'json_schema', schema } },
       messages: [{ role: 'user', content: prompt }],
     })
+    for (const block of response.content) {
+      if (block.type === 'thinking' && block.thinking) this.onThinking?.(block.thinking)
+    }
     if (response.stop_reason === 'refusal') {
       throw new Error('model refused the request')
     }
