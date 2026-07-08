@@ -261,6 +261,21 @@ describe('turn transitions move authority', () => {
   })
 })
 
+describe('authority moves before state becomes visible', () => {
+  it('a failed tuple transition aborts the move — state and tuples never diverge', async () => {
+    await post('/games/g1/clue', 'red-spymaster', { word: 'valid', count: 2 })
+    fga.transitionTurn = async () => {
+      throw new Error('FGA unreachable')
+    }
+    const res = await post('/games/g1/pass', 'red-operative') // pass flips the turn
+    expect(res.statusCode).toBe(500)
+    const state = store.get('g1')!.state
+    expect(state.turn).toBe('red') // NOT committed
+    expect(state.phase).toBe('awaiting_guesses')
+    expect(store.get('g1')!.events.filter((e) => e.kind === 'pass')).toHaveLength(0)
+  })
+})
+
 describe('public surfaces', () => {
   it('game state is public and never leaks unrevealed card types', async () => {
     await post('/games/g1/clue', 'red-spymaster', { word: 'valid', count: 2 })

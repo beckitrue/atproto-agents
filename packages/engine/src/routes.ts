@@ -13,6 +13,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { EventKind } from '@atproto-agents/lexicon'
 import { GameRuleError, createGame, giveClue, guess, pass, publicBoard, seededRng } from './game.js'
+import type { GameState } from './game.js'
 import { WORDS } from './wordlist.js'
 import type { AuthorizerApi, Permission, RoleAssignments } from './fga.js'
 import { turnHolders } from './fga.js'
@@ -58,7 +59,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     authHeader: string | undefined,
     kind: MoveKind,
     permission: Permission,
-    apply: (game: StoredGame) => void,
+    apply: (state: GameState) => GameState,
   ) => {
     const identity = await verifyBearer(authHeader) // throws AuthError → 401
     const game = store.get(gameId)
@@ -78,10 +79,11 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       }
     }
 
-    // 3+4. VALIDATE and COMMIT
+    // 3. VALIDATE — compute the next state without committing it.
     const before = game.state.turn
+    let next: GameState
     try {
-      apply(game)
+      next = apply(game.state)
     } catch (err) {
       if (err instanceof GameRuleError) {
         record(game, kind, identity.did, 'denied_rules', err.message)
@@ -92,18 +94,27 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       }
       throw err
     }
-    record(game, kind, identity.did, 'accepted')
 
     // Turn changed → move the ephemeral FGA tuples. The on-stage moment.
-    if (game.state.phase === 'finished') {
+    // Authority moves BEFORE the new state becomes visible: an agent that
+    // polls state and sees its turn must already hold the tuple, or the
+    // demo shows a spurious denial. If the FGA write fails, the move is
+    // not committed — tuples and state never diverge.
+    if (next.phase === 'finished') {
       const holders = turnHolders(game.roles, before)
       await authorizer.transitionTurn(gameId, { revoke: holders, grant: {} })
-      record(game, 'game_end', 'referee', 'accepted', game.state.winReason ?? undefined)
-    } else if (game.state.turn !== before) {
+    } else if (next.turn !== before) {
       await authorizer.transitionTurn(gameId, {
         revoke: turnHolders(game.roles, before),
-        grant: turnHolders(game.roles, game.state.turn),
+        grant: turnHolders(game.roles, next.turn),
       })
+    }
+
+    // 4. COMMIT
+    game.state = next
+    record(game, kind, identity.did, 'accepted')
+    if (next.phase === 'finished') {
+      record(game, 'game_end', 'referee', 'accepted', next.winReason ?? undefined)
     }
     return { status: 200 as const, body: { outcome: 'accepted', state: publicState(game) } }
   }
@@ -134,9 +145,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
         req.headers.authorization,
         'clue',
         'can_give_clue',
-        (game) => {
-          game.state = giveClue(game.state, game.state.turn, req.body.word, req.body.count)
-        },
+        (state) => giveClue(state, state.turn, req.body.word, req.body.count),
       )
       return reply.status(status).send(body)
     },
@@ -150,9 +159,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
         req.headers.authorization,
         'guess',
         'can_guess',
-        (game) => {
-          game.state = guess(game.state, game.state.turn, req.body.word)
-        },
+        (state) => guess(state, state.turn, req.body.word),
       )
       return reply.status(status).send(body)
     },
@@ -164,9 +171,7 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
       req.headers.authorization,
       'pass',
       'can_guess',
-      (game) => {
-        game.state = pass(game.state, game.state.turn)
-      },
+      (state) => pass(state, state.turn),
     )
     return reply.status(status).send(body)
   })

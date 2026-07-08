@@ -139,7 +139,15 @@ the same path, plus a tuple grant.
   agent, client grants, and a credentials-exchange Action stamping each agent's DID onto
   its tokens. Credentials in `infra/.env` (gitignored).
 - Auth0 FGA store + authorization model created; IDs in `infra/.env`.
-- Remaining week 1: game engine core (rules + FGA checks) — in progress; lexicon draft.
+- Game engine core complete and live-smoke-tested against real Auth0 + FGA
+  (`scripts/smoke-engine.mjs` — all demo beats pass; FGA checks use HIGHER_CONSISTENCY).
+- Agents built (`packages/agents`): Claude brain (Opus 4.8, structured outputs, public
+  reasoning per move) with deterministic scripted fallback — any LLM failure degrades to
+  scripted mid-move. **Full game loop verified end-to-end**: four scripted agents played
+  complete games against the live engine with real Auth0 tokens and real FGA tuple
+  transitions, zero spurious denials. LLM brain awaits the Anthropic API key for live play.
+- Remaining week 2: PDS move records + Bluesky mirror posts (runner `onMove` /
+  engine `onEvent` seams); federation relay check.
 
 ## Open items
 
