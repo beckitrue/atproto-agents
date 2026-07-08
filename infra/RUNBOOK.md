@@ -13,8 +13,11 @@ federation is proven.
 
 - AWS account with CLI configured (`aws sts get-caller-identity` works)
 - Cloudflare-managed DNS for `beckitrue.com`
-- An SSH public key you want to use
-- Locally: `openssl`, `ssh`, `curl`
+- Locally: `openssl`, `curl`, and the [SSM session-manager-plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
+  (`sudo dpkg -i session-manager-plugin.deb`)
+
+Server access is via **SSM Session Manager** — no SSH key pair, no port 22,
+IAM-authenticated and audited sessions.
 
 Pick a region and stick with it (examples use `us-west-2`):
 
@@ -27,30 +30,35 @@ export AWS_REGION=us-west-2
 ## 1. Provision the EC2 instance
 
 > **Console instead of CLI?** Everything below maps to: launch an Ubuntu 24.04
-> instance, `t4g.small`, 20 GB gp3, security group allowing 22 (your IP) +
-> 80/443 (world), and associate an Elastic IP.
+> instance, `t4g.small`, 20 GB gp3, an IAM role with
+> `AmazonSSMManagedInstanceCore`, security group allowing 80/443 (world, no
+> SSH), and associate an Elastic IP.
 
-### 1.1 Key pair
+### 1.1 IAM role for SSM access
 
 ```bash
-aws ec2 import-key-pair \
-  --key-name atproto-agents \
-  --public-key-material fileb://~/.ssh/id_ed25519.pub
+aws iam create-role --role-name atproto-agents-ssm \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{"Effect": "Allow",
+                   "Principal": {"Service": "ec2.amazonaws.com"},
+                   "Action": "sts:AssumeRole"}]}'
+aws iam attach-role-policy --role-name atproto-agents-ssm \
+  --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+aws iam create-instance-profile --instance-profile-name atproto-agents-ssm
+aws iam add-role-to-instance-profile \
+  --instance-profile-name atproto-agents-ssm --role-name atproto-agents-ssm
 ```
 
 ### 1.2 Security group
 
 ```bash
-MY_IP=$(curl -s https://checkip.amazonaws.com)
-
 SG_ID=$(aws ec2 create-security-group \
   --group-name atproto-agents \
   --description "PDS + game engine for atproto-agents" \
   --query GroupId --output text)
 
-# SSH from your IP only; HTTP/HTTPS from the world (Caddy needs 80 for ACME)
-aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
-  --protocol tcp --port 22 --cidr "$MY_IP/32"
+# HTTP/HTTPS from the world (Caddy needs 80 for ACME). No SSH — access is SSM.
 aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
   --protocol tcp --port 80 --cidr 0.0.0.0/0
 aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
@@ -72,7 +80,7 @@ AMI_ID=$(aws ssm get-parameter \
 INSTANCE_ID=$(aws ec2 run-instances \
   --image-id "$AMI_ID" \
   --instance-type t4g.small \
-  --key-name atproto-agents \
+  --iam-instance-profile Name=atproto-agents-ssm \
   --security-group-ids "$SG_ID" \
   --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":20,"VolumeType":"gp3"}}]' \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=atproto-agents}]' \
@@ -122,8 +130,13 @@ dig +short pds.beckitrue.com   # should print the EIP
 
 ## 3. Server setup
 
+Connect via SSM (the Ubuntu AMI ships with the agent; allow a couple of
+minutes after launch for it to register):
+
 ```bash
-ssh ubuntu@$EIP
+aws ssm start-session --target "$INSTANCE_ID"
+# then, in the session:
+sudo su - ubuntu
 ```
 
 ### 3.1 Docker
@@ -266,7 +279,12 @@ verified, so any later mishap can be rolled back to a known-good demo state.
 aws ec2 terminate-instances --instance-ids "$INSTANCE_ID"
 aws ec2 release-address --allocation-id "$ALLOC_ID"
 aws ec2 delete-security-group --group-id "$SG_ID"
-aws ec2 delete-key-pair --key-name atproto-agents
+aws iam remove-role-from-instance-profile \
+  --instance-profile-name atproto-agents-ssm --role-name atproto-agents-ssm
+aws iam delete-instance-profile --instance-profile-name atproto-agents-ssm
+aws iam detach-role-policy --role-name atproto-agents-ssm \
+  --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+aws iam delete-role --role-name atproto-agents-ssm
 ```
 
 Note: deleting the PDS orphans the agent DIDs (they're registered in

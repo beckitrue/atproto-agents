@@ -29,6 +29,8 @@ services:
       - pds_data:/pds
     environment:
       - PDS_HOSTNAME=pds.${DOMAIN}
+      # agent handles live directly under the apex domain (red-spymaster.<domain>)
+      - PDS_SERVICE_HANDLE_DOMAINS=.${DOMAIN}
       - PDS_ADMIN_PASSWORD=${PDS_ADMIN_PASSWORD}
       - PDS_JWT_SECRET=${PDS_JWT_SECRET}
       - PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=${PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX}
