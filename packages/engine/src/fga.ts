@@ -58,7 +58,20 @@ export function fgaClientFromEnv(): OpenFgaClient {
   })
 }
 
-export class Authorizer {
+/** The operations the engine needs from the authorization layer. */
+export interface AuthorizerApi {
+  check(agentDid: string, permission: Permission, gameId: string): Promise<boolean>
+  assignRoles(gameId: string, roles: RoleAssignments): Promise<void>
+  transitionTurn(
+    gameId: string,
+    opts: {
+      revoke?: { clueGiver?: string; guesser?: string }
+      grant: { clueGiver?: string; guesser?: string }
+    },
+  ): Promise<void>
+}
+
+export class Authorizer implements AuthorizerApi {
   constructor(private readonly fga: OpenFgaClient) {}
 
   /** The single question the engine asks before any move takes effect. */

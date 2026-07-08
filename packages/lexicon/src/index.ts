@@ -62,7 +62,7 @@ export interface ClueRef {
   team: Team
 }
 
-export type EventKind = 'clue' | 'guess' | 'pass' | 'game_start' | 'game_end'
+export type EventKind = 'clue' | 'guess' | 'pass' | 'key_peek' | 'game_start' | 'game_end'
 
 /**
  * denied_authz = FGA said no; denied_rules = authorized but illegal move.

@@ -80,7 +80,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "enum": ["clue", "guess", "pass", "game_start", "game_end"]
+          "enum": ["clue", "guess", "pass", "key_peek", "game_start", "game_end"]
         },
         "actor": {
           "type": "string",
