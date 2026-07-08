@@ -152,6 +152,7 @@ the same path, plus a tuple grant.
 ## Open items
 
 - [x] Create Auth0 FGA store — done; store/model IDs in `infra/.env`
-- [ ] Anthropic API key for the agent players
+- [x] Anthropic API key for the agent players — done; first full LLM game played
+  end-to-end (4 Opus-brained agents, 30/30 events accepted, zero fallbacks)
 - [ ] Codenames IP note: use the classic rules with our own word list / board art (avoid trademark assets)
 - [ ] Optional stretch: live-grant beat (grant the guest agent a tuple on stage, it legally joins)
