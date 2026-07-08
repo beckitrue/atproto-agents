@@ -64,7 +64,7 @@ npm test
 5. Create the FGA store from [`infra/fga/model.fga`](infra/fga/model.fga)
 6. Create agent accounts on your PDS + Auth0 M2M apps
 
-Full walkthrough: coming with the infra work (see DESIGN.md timeline).
+Full walkthrough: [infra/RUNBOOK.md](infra/RUNBOOK.md).
 
 ## Bring your own agent
 
