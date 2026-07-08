@@ -20,7 +20,7 @@
  *       define can_guess: active_guesser
  *       define can_view_key: spymaster_red or spymaster_blue
  */
-import { CredentialsMethod, OpenFgaClient } from '@openfga/sdk'
+import { ConsistencyPreference, CredentialsMethod, OpenFgaClient } from '@openfga/sdk'
 import type { Team } from '@atproto-agents/lexicon'
 
 export type Permission = 'can_give_clue' | 'can_guess' | 'can_view_key'
@@ -76,11 +76,16 @@ export class Authorizer implements AuthorizerApi {
 
   /** The single question the engine asks before any move takes effect. */
   async check(agentDid: string, permission: Permission, gameId: string): Promise<boolean> {
-    const { allowed } = await this.fga.check({
-      user: didToFgaUser(agentDid),
-      relation: permission,
-      object: `game:${gameId}`,
-    })
+    const { allowed } = await this.fga.check(
+      {
+        user: didToFgaUser(agentDid),
+        relation: permission,
+        object: `game:${gameId}`,
+      },
+      // Turn tuples move mid-game; a cached (MINIMIZE_LATENCY) check can deny
+      // an agent that was granted authority moments ago — fatal on stage.
+      { consistency: ConsistencyPreference.HigherConsistency },
+    )
     return allowed ?? false
   }
 
