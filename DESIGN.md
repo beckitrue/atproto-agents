@@ -65,6 +65,9 @@ type game
     define can_view_key: spymaster_red or spymaster_blue
 ```
 
+FGA object/user IDs may not contain colons, so agent IDs are DIDs with colons encoded as
+underscores: `did:plc:xyz` → `agent:did_plc_xyz` (see `didToFgaUser` in the engine).
+
 **Auth flow, end to end:**
 agent → Auth0 client-credentials token (DID claim) → game engine → verify token, map DID →
 `FGA.check(agent:<did>, can_give_clue, game:<id>)` → accept/reject → accepted moves update
@@ -127,9 +130,20 @@ the same path, plus a tuple grant.
 - Optional (week 3): small Terraform module for EC2/EIP/security group so "deploy your
   own" is one `terraform apply`.
 
+## Status (end of day, Jul 8)
+
+- PDS live on EC2 (`pds.beckitrue.com`), federated with the Bluesky relay; five agent
+  accounts created (DIDs in `infra/agents.json`) and first post visible in the official
+  Bluesky AppView. Server access via SSM (no SSH).
+- Auth0 set up via `scripts/setup-auth0.mjs` (idempotent): game API, one M2M app per
+  agent, client grants, and a credentials-exchange Action stamping each agent's DID onto
+  its tokens. Credentials in `infra/.env` (gitignored).
+- Auth0 FGA store + authorization model created; IDs in `infra/.env`.
+- Remaining week 1: game engine core (rules + FGA checks) — in progress; lexicon draft.
+
 ## Open items
 
-- [ ] Create Auth0 FGA store (separate signup from the Auth0 tenant)
+- [x] Create Auth0 FGA store — done; store/model IDs in `infra/.env`
 - [ ] Anthropic API key for the agent players
 - [ ] Codenames IP note: use the classic rules with our own word list / board art (avoid trademark assets)
 - [ ] Optional stretch: live-grant beat (grant the guest agent a tuple on stage, it legally joins)

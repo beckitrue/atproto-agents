@@ -1,6 +1,8 @@
 model
   schema 1.1
 
+# agent ids are DIDs encoded with underscores (FGA ids may not contain
+# colons): did:plc:xyz -> agent:did_plc_xyz  (see engine didToFgaUser)
 type agent
 
 type game

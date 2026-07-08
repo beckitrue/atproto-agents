@@ -1,0 +1,49 @@
+{
+  "$comment": "The agent roster: AT Proto identities (public) and their game roles. Auth0 client IDs are filled in by scripts/setup-auth0.mjs; secrets never live here.",
+  "gameApiAudience": "https://game.beckitrue.com",
+  "didClaim": "https://beckitrue.com/atproto_did",
+  "agents": [
+    {
+      "name": "red-spymaster",
+      "handle": "red-spymaster.beckitrue.com",
+      "did": "did:plc:y23rxwfoym64wg3xtf7xtpqg",
+      "team": "red",
+      "role": "spymaster"
+    },
+    {
+      "name": "red-operative",
+      "handle": "red-operative.beckitrue.com",
+      "did": "did:plc:4vfjuj6rnbq3bcqual3sikib",
+      "team": "red",
+      "role": "operative"
+    },
+    {
+      "name": "blue-spymaster",
+      "handle": "blue-spymaster.beckitrue.com",
+      "did": "did:plc:utqzhjtydl26qrmicatnr7a3",
+      "team": "blue",
+      "role": "spymaster"
+    },
+    {
+      "name": "blue-operative",
+      "handle": "blue-operative.beckitrue.com",
+      "did": "did:plc:gvzsjft7lqwc3ujo4rzqb22u",
+      "team": "blue",
+      "role": "operative"
+    },
+    {
+      "name": "guest-agent",
+      "handle": null,
+      "did": null,
+      "team": null,
+      "role": "guest",
+      "$comment": "Demo beat 5: authenticated (valid Auth0 client) but holds no FGA tuples — federation grants voice, not authority. DID filled in when a foreign-PDS identity is created for it."
+    }
+  ],
+  "referee": {
+    "name": "referee",
+    "handle": "referee.beckitrue.com",
+    "did": "did:plc:xgdzu5egqclsjtiwiv7rkf2k",
+    "$comment": "The engine's own AT Proto identity; publishes gameState records. Not an API caller, so no Auth0 client."
+  }
+}

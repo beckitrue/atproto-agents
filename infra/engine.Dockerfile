@@ -5,7 +5,8 @@ WORKDIR /app
 COPY package.json package-lock.json* tsconfig.base.json ./
 COPY packages/lexicon/package.json packages/lexicon/
 COPY packages/engine/package.json packages/engine/
-RUN npm install --workspace @atproto-agents/lexicon --workspace @atproto-agents/engine
+# plain install: resolves the copied workspaces AND root devDeps (typescript)
+RUN npm install
 COPY packages/lexicon packages/lexicon
 COPY packages/engine packages/engine
 RUN npm run build --workspace @atproto-agents/lexicon --workspace @atproto-agents/engine

@@ -25,6 +25,15 @@ import type { Team } from '@atproto-agents/lexicon'
 
 export type Permission = 'can_give_clue' | 'can_guess' | 'can_view_key'
 
+/**
+ * FGA object/user IDs may not contain colons, so DIDs are encoded with
+ * underscores: did:plc:xyz → did_plc_xyz. Unambiguous for did:plc (base32
+ * method-specific ids never contain underscores).
+ */
+export function didToFgaUser(did: string): string {
+  return `agent:${did.replaceAll(':', '_')}`
+}
+
 export interface RoleAssignments {
   spymasterRed: string // agent DIDs
   operativeRed: string
@@ -55,7 +64,7 @@ export class Authorizer {
   /** The single question the engine asks before any move takes effect. */
   async check(agentDid: string, permission: Permission, gameId: string): Promise<boolean> {
     const { allowed } = await this.fga.check({
-      user: `agent:${agentDid}`,
+      user: didToFgaUser(agentDid),
       relation: permission,
       object: `game:${gameId}`,
     })
@@ -66,10 +75,10 @@ export class Authorizer {
   async assignRoles(gameId: string, roles: RoleAssignments): Promise<void> {
     await this.fga.write({
       writes: [
-        { user: `agent:${roles.spymasterRed}`, relation: 'spymaster_red', object: `game:${gameId}` },
-        { user: `agent:${roles.operativeRed}`, relation: 'operative_red', object: `game:${gameId}` },
-        { user: `agent:${roles.spymasterBlue}`, relation: 'spymaster_blue', object: `game:${gameId}` },
-        { user: `agent:${roles.operativeBlue}`, relation: 'operative_blue', object: `game:${gameId}` },
+        { user: didToFgaUser(roles.spymasterRed), relation: 'spymaster_red', object: `game:${gameId}` },
+        { user: didToFgaUser(roles.operativeRed), relation: 'operative_red', object: `game:${gameId}` },
+        { user: didToFgaUser(roles.spymasterBlue), relation: 'spymaster_blue', object: `game:${gameId}` },
+        { user: didToFgaUser(roles.operativeBlue), relation: 'operative_blue', object: `game:${gameId}` },
       ],
     })
   }
@@ -88,16 +97,16 @@ export class Authorizer {
     const deletes = []
     const writes = []
     if (opts.revoke?.clueGiver) {
-      deletes.push({ user: `agent:${opts.revoke.clueGiver}`, relation: 'active_clue_giver', object: `game:${gameId}` })
+      deletes.push({ user: didToFgaUser(opts.revoke.clueGiver), relation: 'active_clue_giver', object: `game:${gameId}` })
     }
     if (opts.revoke?.guesser) {
-      deletes.push({ user: `agent:${opts.revoke.guesser}`, relation: 'active_guesser', object: `game:${gameId}` })
+      deletes.push({ user: didToFgaUser(opts.revoke.guesser), relation: 'active_guesser', object: `game:${gameId}` })
     }
     if (opts.grant.clueGiver) {
-      writes.push({ user: `agent:${opts.grant.clueGiver}`, relation: 'active_clue_giver', object: `game:${gameId}` })
+      writes.push({ user: didToFgaUser(opts.grant.clueGiver), relation: 'active_clue_giver', object: `game:${gameId}` })
     }
     if (opts.grant.guesser) {
-      writes.push({ user: `agent:${opts.grant.guesser}`, relation: 'active_guesser', object: `game:${gameId}` })
+      writes.push({ user: didToFgaUser(opts.grant.guesser), relation: 'active_guesser', object: `game:${gameId}` })
     }
     await this.fga.write({
       ...(deletes.length ? { deletes } : {}),
