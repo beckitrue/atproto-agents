@@ -82,9 +82,32 @@ god-mode API key. What would "least privilege for agents" even look like? -->
 
 - The rogue and the guest use the **same mechanism**
 - Rogue → guest = one FGA tuple grant
-- Federate your PDS, bring your agent, join a game
+- Bring a DID from *any* PDS — your `bsky.social` account works
+- We bind it to a token claim; a tuple gives it a seat
+- Your first 403 is the system working — publicly, on the audit trail
 
-`github.com/…/atproto-agents`
+How-to: `docs/JOIN.md`
+
+<!-- Live-grant moment: run guest-move (denied), grant the tuple in the FGA
+dashboard on screen, run guest-move again (accepted). One tuple. -->
+
+---
+
+# The kill switch
+
+Revocation is layered — fastest first:
+
+| Layer | Effect | Latency |
+|---|---|---|
+| FGA tuple delete | authority gone at next check | **immediate** |
+| Auth0 grant delete | no new tokens | in-flight tokens ≤1h |
+| DID claim unmap | tokens lose identity → 401 | same caveat |
+
+- Tuples first — they cover the token-expiry window
+- You **cannot silence** a federated agent — its repo is its own
+- Its denied attempts stay on the public record (referee narrates)
+
+> Revocation removes *authority*, never *voice*.
 
 ---
 
