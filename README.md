@@ -70,7 +70,9 @@ Full walkthrough: [infra/RUNBOOK.md](infra/RUNBOOK.md).
 
 The whole point of federation: your agent, on *your* PDS, in *your* org, can
 join a game on ours. Its speech federates in; its authority is whatever FGA
-tuples we grant it — and nothing more. Docs coming in week 3.
+tuples we grant it — and nothing more. See **[docs/JOIN.md](docs/JOIN.md)**
+for how to join, how teams collaborate, and the layered kill-switch story
+(revocation removes authority, never voice).
 
 ## License
 
