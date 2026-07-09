@@ -88,6 +88,50 @@ Five beats, escalating in subtlety:
 Beat 5 doubles as the closing pitch: attendees can federate their own agents into a game —
 the same path, plus a tuple grant.
 
+## Future: publishing agent thinking (commit–reveal) — designed, not yet built
+
+The agents' raw thinking (Claude's summarized reasoning) is richer than the sanitized
+public `reasoning` — but the spymaster's thinking sees the key card, and **AT Proto has
+no read authorization**: everything in a repo is public, the firehose has no ACLs. FGA
+gates what the engine *accepts*, not who *reads*. So "post thinking to the firehose but
+don't let players see it" is unenforceable at the protocol level — a cheating agent just
+subscribes. Secrets must never enter the protocol; instead of authorization, use
+cryptography:
+
+**Commit at move time, reveal at game end.**
+
+- With each move, the agent also posts a `thoughtCommit` record:
+  `sha256(salt ‖ thinking)`. The salt (random per commit, revealed later) prevents
+  brute-forcing the hash against plausible thinking text.
+- At game end, the agent posts `thoughtReveal` records: the salt + full thinking text.
+- Anyone can verify: hash the reveal, match the commitment.
+
+Two bindings, one of them free:
+
+1. **Content binding** — the salted hash (the only thing we add).
+2. **Identity binding** — free from the protocol: AT Proto repos are signed Merkle
+   trees; every record is committed under the repo signing key published in the agent's
+   DID document. "This agent committed to these bytes" needs no extra signature.
+
+Timestamp caveat: repo signatures prove *who/what*, not trusted wall-clock *when*
+(`createdAt` is self-asserted). Ordering evidence comes from firehose observation
+(relay, AppView, audience verifiers all saw the commit land mid-game). To make it
+airtight, the referee quotes each commitment's CID in its own `gameState` records —
+cross-pinning the commits into a second identity's signed history.
+
+Verifier script checks (audience-runnable): (1) hash(salt ‖ thinking) equals the
+committed hash; (2) the commit record verifies in the agent's signed repo (standard
+AT Proto verification); (3) optional: the referee's mid-game record quotes the commit
+CID. Bonus demo beat: a "cheater" subscribes to the firehose hunting for the opposing
+spymaster's thinking — and finds only hashes.
+
+Implementation sketch: two new lexicon record types (`thoughtCommit`, `thoughtReveal`);
+agents capture thinking per move (the `onThinking` hook already exists), post commits in
+`onMove`, reveal on `game_end`; referee includes commit CIDs in `gameState`; plus
+`scripts/verify-thinking.mjs`. Talk framing: *"identity binding comes from the protocol,
+content binding from a hash — read ACLs from neither, because the protocol refuses to
+pretend public data can be private."*
+
 ## Demo strategy
 
 - **Pre-federated + live game:** PDS federated with the Bluesky relay days before the
@@ -145,9 +189,15 @@ the same path, plus a tuple grant.
   reasoning per move) with deterministic scripted fallback — any LLM failure degrades to
   scripted mid-move. **Full game loop verified end-to-end**: four scripted agents played
   complete games against the live engine with real Auth0 tokens and real FGA tuple
-  transitions, zero spurious denials. LLM brain awaits the Anthropic API key for live play.
-- Remaining week 2: PDS move records + Bluesky mirror posts (runner `onMove` /
-  engine `onEvent` seams); federation relay check.
+  transitions, zero spurious denials.
+- **Week 2 complete (a week early), all verified live:** full LLM games (Opus 4.8,
+  ~$0.51/game); agents publish every accepted move to their own repos (lexicon record +
+  Bluesky mirror with reasoning) — federated to the public AppView; referee publishes
+  `gameState` per event with mirrors for start/end/denials; private thinking logs local-
+  only; agent profiles + one-tap starter pack
+  (`bsky.app/starter-pack/referee.beckitrue.com/3mq6dbiftdk2k`); observer UI v1;
+  live-grant stretch beat rehearsed end-to-end (guest = Becki's personal bsky.network
+  identity; `scripts/grant-guest.mjs` / `guest-move.mjs`).
 
 ## Open items
 
@@ -155,4 +205,6 @@ the same path, plus a tuple grant.
 - [x] Anthropic API key for the agent players — done; first full LLM game played
   end-to-end (4 Opus-brained agents, 30/30 events accepted, zero fallbacks)
 - [ ] Codenames IP note: use the classic rules with our own word list / board art (avoid trademark assets)
-- [ ] Optional stretch: live-grant beat (grant the guest agent a tuple on stage, it legally joins)
+- [x] Optional stretch: live-grant beat — done and rehearsed live (one tuple: denied → accepted)
+- [ ] Thinking transparency via commit–reveal (designed above; `thoughtCommit`/`thoughtReveal`
+  records + verifier script + optional cheater beat)
