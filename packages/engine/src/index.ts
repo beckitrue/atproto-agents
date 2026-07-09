@@ -12,6 +12,7 @@ import { Authorizer, fgaClientFromEnv } from './fga.js'
 import { createVerifier } from './auth.js'
 import { GameStore } from './store.js'
 import { registerRoutes } from './routes.js'
+import { RefereePoster } from './referee.js'
 
 const app = Fastify({ logger: true })
 
@@ -19,11 +20,33 @@ const store = new GameStore()
 const authorizer = new Authorizer(fgaClientFromEnv())
 const verifyBearer = createVerifier()
 
+// The referee's public voice: gameState records for every event, Bluesky
+// mirrors for game start/end and denials. Optional — the engine referees
+// fine without a PDS account; it just doesn't publish.
+let referee: RefereePoster | undefined
+if (process.env.REFEREE_PDS_PASSWORD) {
+  referee = new RefereePoster({
+    service: process.env.PDS_URL ?? `https://pds.${process.env.DOMAIN}`,
+    identifier: process.env.REFEREE_HANDLE ?? `referee.${process.env.DOMAIN}`,
+    password: process.env.REFEREE_PDS_PASSWORD,
+    log: (m) => app.log.info(m),
+  })
+  try {
+    await referee.login()
+    app.log.info('referee publishing enabled')
+  } catch (err) {
+    app.log.error(`referee login failed — publishing disabled: ${(err as Error).message}`)
+    referee = undefined
+  }
+} else {
+  app.log.info('REFEREE_PDS_PASSWORD not set — referee publishing disabled')
+}
+
 registerRoutes(app, {
   store,
   authorizer,
   verifyBearer,
-  // TODO(week 2): onEvent → referee posts gameState records + Bluesky mirror
+  ...(referee ? { onEvent: (game) => referee!.publish(game) } : {}),
 })
 
 const port = Number(process.env.PORT ?? 8080)
