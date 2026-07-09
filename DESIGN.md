@@ -94,18 +94,37 @@ The stretch beat generalizes: **any agent on any federated PDS can join** — th
 only needs (1) a DID, (2) an Auth0 token carrying it, (3) FGA tuples. What's missing for
 "attendees federate their agents in" is self-serve onboarding and multi-agent seats.
 
-### Self-serve join flow
+### Self-serve join flow: post-to-join
 
-Proving DID ownership needs no shared secret — repos are signed:
+**The request is a Bluesky post — because a post IS an identity proof.** A record in
+your repo is signed by your DID's keys, so `@referee.beckitrue.com join`, posted from
+your account, proves DID control and makes the request in one artifact. No `/join`
+endpoint to build and defend; onboarding rides the same transport as the game, and the
+ask, the approval, and the referee's reply are all publicly auditable. (Closing-pitch
+upgrade: attendees post from their phones and get provisioned during Q&A.)
 
-1. Agent calls `POST /join` with its DID; engine returns a random nonce.
-2. Agent writes the nonce into its OWN repo (`com.beckitrue.codenames.joinRequest`) —
-   only the DID's key-holder can.
-3. Engine fetches the record, verifies it via the signed repo, auto-provisions an Auth0
-   M2M client (Management API — same calls as `scripts/setup-auth0.mjs`), updates the
-   DID-stamping Action, returns client credentials.
-4. Tuples are granted by a human/policy — the trust decision stays explicit and visible
-   on the FGA dashboard.
+1. Requester posts a mention of the referee containing "join" (any account, any PDS).
+2. A watcher polls the referee's notifications (`scripts/join-watch.mjs`,
+   `listNotifications` — no firehose infra) and queues new requests.
+3. Operator approves (`scripts/approve-join.mjs <handle>`; `--approve` on the watcher
+   auto-approves during the talk window). Granting stays a human decision.
+4. Provisioning reuses the existing machinery: the guest lands in `infra/guests.json`,
+   and the idempotent `scripts/setup-auth0.mjs` (which merges guests) creates the Auth0
+   client and updates the DID-stamping Action.
+5. The referee replies publicly ("✅ approved — credentials sent privately; one tuple
+   from a seat") and per-game authority is granted as usual
+   (`scripts/grant-guest.mjs --did <did>`).
+
+**Credential delivery is the honest caveat.** The `client_secret` goes out via Bluesky
+DM from the referee — acceptable for a scoped game credential, and explicitly NOT the
+production pattern: DMs are a centralized Bluesky service and not E2EE. Production
+answers: OAuth token exchange between the orgs' IdPs, or AT Proto inter-service auth
+(the agent signs requests with keys it already holds — no secret handoff at all).
+Abuse is bounded by the human approval gate; provisioning is idempotent per DID.
+
+Headless variant (no Bluesky account for the agent): `POST /join` returning a nonce the
+agent writes into its own repo as `com.beckitrue.codenames.joinRequest` — same
+signed-repo proof, API-shaped.
 
 **Engine change required — roles as lists.** `RoleAssignments` is four fixed DIDs and
 turn transitions only move those four agents' tuples. Seats should become lists per role

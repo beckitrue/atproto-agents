@@ -15,12 +15,15 @@
  *
  * Usage:  set -a; source infra/.env; set +a; node scripts/setup-auth0.mjs
  */
-import { appendFileSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const registry = JSON.parse(readFileSync(join(ROOT, 'infra/agents.json'), 'utf8'))
+// Post-to-join guests (scripts/approve-join.mjs) get clients + DID claims too.
+const guestsPath = join(ROOT, 'infra/guests.json')
+const guests = existsSync(guestsPath) ? JSON.parse(readFileSync(guestsPath, 'utf8')) : []
 
 const DOMAIN = process.env.AUTH0_DOMAIN
 const MGMT_ID = process.env.AUTH0_MGMT_CLIENT_ID
@@ -99,7 +102,7 @@ const clients = await api('GET', '/clients?per_page=100&fields=client_id,name&in
 const grants = await api('GET', `/client-grants?audience=${encodeURIComponent(AUDIENCE)}&per_page=100`)
 const didByClientId = {}
 
-for (const agent of registry.agents) {
+for (const agent of [...registry.agents, ...guests]) {
   const appName = `codenames-${agent.name}`
   const prefix = agent.name.toUpperCase().replaceAll('-', '_')
   let client = clients.find((c) => c.name === appName)

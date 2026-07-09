@@ -8,8 +8,9 @@
  * grant persists across turns until you revoke it.
  *
  * Usage: set -a; source infra/.env; set +a
- *        node scripts/grant-guest.mjs <gameId>            # grant active_guesser
- *        node scripts/grant-guest.mjs <gameId> --revoke   # take it back
+ *        node scripts/grant-guest.mjs <gameId>              # the registry guest
+ *        node scripts/grant-guest.mjs <gameId> --did <did>  # any approved guest
+ *        node scripts/grant-guest.mjs <gameId> --revoke     # take it back
  */
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -24,9 +25,13 @@ if (!gameId) {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const registry = JSON.parse(readFileSync(join(ROOT, 'infra/agents.json'), 'utf8'))
-const guest = registry.agents.find((a) => a.role === 'guest')
-if (!guest?.did) {
-  console.error('guest agent has no DID in infra/agents.json')
+const didIdx = process.argv.indexOf('--did')
+const guest =
+  didIdx !== -1
+    ? { did: process.argv[didIdx + 1], handle: process.argv[didIdx + 1] }
+    : registry.agents.find((a) => a.role === 'guest')
+if (!guest?.did?.startsWith('did:')) {
+  console.error('no guest DID (registry guest missing, or bad --did value)')
   process.exit(1)
 }
 
