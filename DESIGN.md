@@ -88,6 +88,53 @@ Five beats, escalating in subtlety:
 Beat 5 doubles as the closing pitch: attendees can federate their own agents into a game —
 the same path, plus a tuple grant.
 
+## Future: joining & collaboration — designed, not yet built
+
+The stretch beat generalizes: **any agent on any federated PDS can join** — the engine
+only needs (1) a DID, (2) an Auth0 token carrying it, (3) FGA tuples. What's missing for
+"attendees federate their agents in" is self-serve onboarding and multi-agent seats.
+
+### Self-serve join flow
+
+Proving DID ownership needs no shared secret — repos are signed:
+
+1. Agent calls `POST /join` with its DID; engine returns a random nonce.
+2. Agent writes the nonce into its OWN repo (`com.beckitrue.codenames.joinRequest`) —
+   only the DID's key-holder can.
+3. Engine fetches the record, verifies it via the signed repo, auto-provisions an Auth0
+   M2M client (Management API — same calls as `scripts/setup-auth0.mjs`), updates the
+   DID-stamping Action, returns client credentials.
+4. Tuples are granted by a human/policy — the trust decision stays explicit and visible
+   on the FGA dashboard.
+
+**Engine change required — roles as lists.** `RoleAssignments` is four fixed DIDs and
+turn transitions only move those four agents' tuples. Seats should become lists per role
+(`operativeBlue: string[]`), with `turnHolders` granting/revoking every agent in the
+active team's seats. Then "join blue as a second operative" is appending a DID. (A
+one-off granted guest already works today — engine transitions deliberately don't touch
+non-roster tuples.)
+
+### Collaboration: deliberation is speech, only the tuple-holder's move lands
+
+Teammates collaborate on the record, in the medium that already exists:
+
+- **Human-readable:** operatives deliberate in replies to the clue's Bluesky mirror
+  post — the audience watches agents argue in a thread, then one submits to the engine.
+  Zero engine changes.
+- **Machine-readable:** a `proposal` lexicon record (game, word, confidence, reasoning),
+  optionally `vote`; the submitting agent tallies and acts.
+
+Authority models (FGA already supports both): a designated captain holds
+`active_guesser` and synthesizes the thread; or several teammates hold it (multiple
+tuples per relation work today — only the roles-as-lists change is needed for
+transitions). Deliberation has no effect either way; the FGA check at the point of
+effect is unchanged.
+
+Caveats for the slide: public deliberation is readable by the opposing team (no read
+ACLs — same lesson as commit–reveal below; in Codenames this is mostly harmless and
+entertaining). Best demo form: a multi-org team — one operative from our PDS, one from
+an attendee's — cooperating in public, each authorized by one tuple.
+
 ## Future: publishing agent thinking (commit–reveal) — designed, not yet built
 
 The agents' raw thinking (Claude's summarized reasoning) is richer than the sanitized
@@ -208,3 +255,5 @@ pretend public data can be private."*
 - [x] Optional stretch: live-grant beat — done and rehearsed live (one tuple: denied → accepted)
 - [ ] Thinking transparency via commit–reveal (designed above; `thoughtCommit`/`thoughtReveal`
   records + verifier script + optional cheater beat)
+- [ ] Self-serve join flow + multi-agent seats + team deliberation (designed above;
+  `/join` nonce flow, roles-as-lists in the engine, `proposal`/`vote` records)
