@@ -13,6 +13,7 @@ title: "Agents Need Passports: Identity & Authorization for AI Agents with AT Pr
 
 BSidesLV · August 2026
 Becki True · @beckitrue.com
+Steve Jarvis · @iamateapot.bsky.social
 
 ---
 
@@ -100,5 +101,8 @@ god-mode API key. What would "least privilege for agents" even look like? -->
 
 # Thanks
 
+Becki True · @beckitrue.com
+Steve Jarvis · @iamateapot.bsky.social
+
 Repo · slides · demo recording
-`github.com/…/atproto-agents`
+`github.com/beckitrue/atproto-agents`
