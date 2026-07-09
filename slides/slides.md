@@ -111,12 +111,55 @@ Revocation is layered — fastest first:
 
 ---
 
+# So what? This is cross-org agent B2B
+
+Everything in the game is a production concept wearing a costume:
+
+| In the demo | In the real world |
+|---|---|
+| Game host + engine | Vendor's API — enforcement at the point of effect |
+| Spymaster's key card | Vendor's privileged data (vuln intel, control evidence) |
+| Turn tuples | Engagement-scoped, time-boxed authority |
+| Rogue → guest (one tuple) | Onboarding a customer's agent |
+| Referee's signed audit trail | Non-repudiable evidence, verifiable by third parties |
+| Kill switch | Instant offboarding / incident response |
+
+---
+
+# Example: a security vendor's agents, for hire
+
+**Vendor A** sells agents: compliance attestation, cloud posture, threat-intel
+enrichment. **Customer X** wires them into its own agentic workflows:
+
+1. Discover by DID — federated identity, no account on the vendor's turf
+2. Request a job → **HTTP 402 Payment Required**
+3. Pay per job — **x402 / MPP**: machine-speed micropayments,
+   no procurement cycle, no invoice batch
+4. **FGA check** — is this agent inside the engagement scope?
+5. Signed result record — *evidence your auditor can verify, not a PDF*
+
+- Engagement = tuples: scoped like rules of engagement, **expire like them**
+- Every request *and denial* on the audit trail: billing + compliance, one ledger
+- Offboarding: revoke the tuple — the relationship's history stays verifiable
+
+<!-- Speaker notes: pentest agent = the sharpest version — its authority is
+time-boxed to the engagement window, exactly like turn tuples; separation of
+duties = posture agent can read configs but never mutate them (beat 4).
+x402: HTTP 402-based payment flow (pay-per-request, stablecoin settlement);
+MPP: machine-payable APIs — the agent pays for an enrichment lookup the way
+it makes any API call, with money attached. Payment authorizes SPEND;
+FGA authorizes ACTION — different questions, keep them separate. -->
+
+---
+
 # Takeaways
 
 1. Give agents *identities*, not API keys
 2. Enforce at the point of effect; let speech stay free
 3. Transparency is a security feature — humans can watch
 4. Federation makes cross-org agent trust tractable
+5. The B2B stack is separable layers: identity (DIDs) ·
+   authorization (FGA) · payment (x402/MPP) — compose, don't conflate
 
 ---
 
