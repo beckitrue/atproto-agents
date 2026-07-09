@@ -142,6 +142,22 @@ enrichment. **Customer X** wires them into its own agentic workflows:
 - Every request *and denial* on the audit trail: billing + compliance, one ledger
 - Offboarding: revoke the tuple — the relationship's history stays verifiable
 
+**Where this doesn't fit yet:** consumer healthcare. *"What do my Medicare
+parts cover — who's in-network near me?"* Identity & authorization map
+(your agent is the guest; the payer grants a scoped tuple) — but
+transparent-by-default communication is **disqualifying for PHI**.
+Private channels are the open problem.
+
+<!-- The limits beat pre-empts the HIPAA question by asking it ourselves.
+Nuance if asked: the PUBLIC half of that use case works today — plan
+coverage rules, NPPES provider directories are open data an agent can
+query freely. It's the personal context ("my plan", "near me") that can't
+touch a public firehose. That's exactly the public/private line this talk
+draws: don't put secrets where the protocol can't protect them. Delegated
+consent to personal health data is also already SMART-on-FHIR's territory —
+this architecture complements it (agent identity), doesn't replace it. -->
+
+
 <!-- Speaker notes: pentest agent = the sharpest version — its authority is
 time-boxed to the engagement window, exactly like turn tuples; separation of
 duties = posture agent can read configs but never mutate them (beat 4).
