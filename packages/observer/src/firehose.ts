@@ -10,7 +10,7 @@
  * strangers, projected on a wall. We can't stop anyone writing these records
  * and don't pretend to; we curate the view instead. See docs/OBSERVER.md.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { PDS_URL, PLAYER_DIDS, REFEREE_DID, ROSTER } from './roster.js'
 
 const JETSTREAM = 'wss://jetstream2.us-east.bsky.network/subscribe'
@@ -43,7 +43,8 @@ export interface FirehoseState {
   rows: FirehoseRow[]
   /** Unrecognized DIDs seen, and how many records they wrote. */
   strangers: { dids: number; records: number }
-  status: 'connecting' | 'live' | 'frozen' | 'error'
+  /** 'polling' = live socket unavailable, falling back to PDS reads. */
+  status: 'connecting' | 'live' | 'polling' | 'frozen' | 'error'
 }
 
 /**
@@ -132,7 +133,7 @@ function merge(existing: FirehoseRow[], incoming: FirehoseRow[]): FirehoseRow[] 
 }
 
 /** Everything this repo has already said — Jetstream only carries live data. */
-async function backfill(gameId: string | null): Promise<FirehoseRow[]> {
+async function backfill(gameId: string | null, limit = 30): Promise<FirehoseRow[]> {
   const fetches: Array<Promise<FirehoseRow[]>> = []
   const load = async (did: string, collection: string, limit: number) => {
     const url = `${PDS_URL}/xrpc/com.atproto.repo.listRecords?repo=${did}&collection=${collection}&limit=${limit}`
@@ -144,9 +145,9 @@ async function backfill(gameId: string | null): Promise<FirehoseRow[]> {
       .filter(Boolean) as FirehoseRow[]
   }
   for (const did of PLAYER_DIDS) {
-    for (const c of MOVE_COLLECTIONS) fetches.push(load(did, c, 30).catch(() => []))
+    for (const c of MOVE_COLLECTIONS) fetches.push(load(did, c, limit).catch(() => []))
   }
-  fetches.push(load(REFEREE_DID, `${NSID_PREFIX}gameState`, 100).catch(() => []))
+  fetches.push(load(REFEREE_DID, `${NSID_PREFIX}gameState`, limit * 3).catch(() => []))
   const all = await Promise.all(fetches)
   return all.flat()
 }
@@ -157,41 +158,76 @@ export function useFirehose(gameId: string | null, rosterOnly: boolean): Firehos
   const [status, setStatus] = useState<FirehoseState['status']>('connecting')
   const [frozen, setFrozen] = useState(false)
   const strangerDids = useRef(new Set<string>())
+  /** Every row key ever ingested — dedupe across socket and poll. */
+  const seenKeys = useRef(new Set<string>())
 
   // `f` freezes the column — a one-keystroke escape if the projector fills
   // with something we'd rather not be showing a conference audience.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'f' && !e.metaKey && !e.ctrlKey) setFrozen((v) => !v)
+      // Don't fire while a control has focus — 'f' is an easy accident.
+      const el = document.activeElement
+      if (el && ['INPUT', 'TEXTAREA', 'BUTTON'].includes(el.tagName)) return
+      if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey) setFrozen((v) => !v)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
 
+  /**
+   * Fold a batch of rows in, counting each stranger record exactly once.
+   *
+   * Novelty is decided against a ref rather than inside a setState updater:
+   * React may invoke an updater twice (StrictMode), which would double-count
+   * the stranger tally and inflate the warning the audience sees.
+   */
+  const ingest = useCallback((incoming: FirehoseRow[]) => {
+    if (incoming.length === 0) return
+    const novel = incoming.filter((r) => !seenKeys.current.has(r.key))
+    if (novel.length === 0) return
+    novel.forEach((r) => seenKeys.current.add(r.key))
+
+    const strangerRecords = novel.filter((r) => !r.seated)
+    if (strangerRecords.length) {
+      strangerRecords.forEach((r) => strangerDids.current.add(r.did))
+      setStrangers((prev) => ({
+        dids: strangerDids.current.size,
+        records: prev.records + strangerRecords.length,
+      }))
+    }
+    setRows((prev) => merge(prev, novel))
+  }, [])
+
   useEffect(() => {
     let live = true
     backfill(gameId)
-      .then((initial) => {
-        if (!live) return
-        // Count backfilled strangers too. Their rows are collapsed by
-        // default, so without this they'd be filtered out of the column with
-        // no counter to explain the absence — a silent disappearance.
-        const fresh = initial.filter((r) => !r.seated && !strangerDids.current.has(r.did))
-        fresh.forEach((r) => strangerDids.current.add(r.did))
-        const strangerRecords = initial.filter((r) => !r.seated).length
-        if (strangerRecords) {
-          setStrangers((s) => ({
-            dids: strangerDids.current.size,
-            records: s.records + strangerRecords,
-          }))
-        }
-        setRows((prev) => merge(prev, initial))
-      })
+      .then((initial) => live && ingest(initial))
       .catch(() => undefined)
     return () => {
       live = false
     }
-  }, [gameId])
+  }, [gameId, ingest])
+
+  // Fallback: some browsers and networks drop the Jetstream WebSocket —
+  // Firefox-derived browsers with strict tracking protection, and locked-down
+  // conference wifi, both do. Without this the column keeps showing whatever
+  // the initial backfill found, looking current while being frozen in time.
+  // That silent staleness is worse than an error, so when the socket isn't
+  // live we re-read the repos instead. Slower, but correct, and it stops the
+  // moment the socket recovers.
+  useEffect(() => {
+    if (frozen || status === 'live') return
+    let live = true
+    const poll = () =>
+      backfill(gameId, 10)
+        .then((rows2) => live && ingest(rows2))
+        .catch(() => undefined)
+    const id = setInterval(poll, 8000)
+    return () => {
+      live = false
+      clearInterval(id)
+    }
+  }, [gameId, frozen, status, ingest])
 
   useEffect(() => {
     if (frozen) {
@@ -205,12 +241,22 @@ export function useFirehose(gameId: string | null, rosterOnly: boolean): Firehos
     const connect = () => {
       if (!live) return
       setStatus('connecting')
-      ws = new WebSocket(`${JETSTREAM}?wantedCollections=${NSID_PREFIX}*`)
+      try {
+        ws = new WebSocket(`${JETSTREAM}?wantedCollections=${NSID_PREFIX}*`)
+      } catch {
+        // Some browsers block WebSocket by THROWING here rather than failing
+        // asynchronously. Uncaught, that escapes the effect and the polling
+        // fallback never starts — the column would sit empty forever.
+        setStatus('polling')
+        retry = setTimeout(connect, 15000)
+        return
+      }
       ws.onopen = () => live && setStatus('live')
-      ws.onerror = () => live && setStatus('error')
+      ws.onerror = () => live && setStatus('polling')
       ws.onclose = () => {
         if (!live) return
-        setStatus('error')
+        // Not 'error': the polling fallback keeps the column correct.
+        setStatus('polling')
         retry = setTimeout(connect, 3000)
       }
       ws.onmessage = (ev) => {
@@ -232,13 +278,11 @@ export function useFirehose(gameId: string | null, rosterOnly: boolean): Firehos
         const row = toRow(msg.did, c.collection, c.record ?? {}, key, gameId)
         if (!row) return
 
-        if (!row.seated) {
-          const known = strangerDids.current.has(row.did)
-          if (!known) strangerDids.current.add(row.did)
+        if (row.seated || !rosterOnly) ingest([row])
+        else {
+          strangerDids.current.add(row.did)
           setStrangers((s) => ({ dids: strangerDids.current.size, records: s.records + 1 }))
-          if (rosterOnly) return
         }
-        setRows((prev) => merge(prev, [row]))
       }
     }
     connect()
@@ -248,7 +292,7 @@ export function useFirehose(gameId: string | null, rosterOnly: boolean): Firehos
       if (retry) clearTimeout(retry)
       ws?.close()
     }
-  }, [gameId, rosterOnly, frozen])
+  }, [gameId, rosterOnly, frozen, ingest])
 
   return { rows, strangers, status }
 }
