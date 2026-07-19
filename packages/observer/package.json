@@ -2,12 +2,13 @@
   "name": "@atproto-agents/observer",
   "version": "0.1.0",
   "private": true,
-  "description": "Observer UI — game board, live agent feed, and FGA decision log for the audience",
+  "description": "Observer UI \u2014 game board, live agent feed, and FGA decision log for the audience",
   "type": "module",
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "react": "^18.3.0",
@@ -17,6 +18,7 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "vitest": "^2.0.0"
   }
 }
