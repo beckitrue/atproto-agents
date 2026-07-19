@@ -302,7 +302,18 @@ function Header({
   engineError: string | null
   status: string
 }) {
-  const dot = status === 'live' ? C.ok : status === 'frozen' ? C.warn : C.dim
+  // 'polling' must look different from 'live': the column still updates, but
+  // on an 8s timer rather than instantly, and pretending otherwise would make
+  // a stale projector look current.
+  const FALLBACK = { color: C.dim, label: 'firehose connecting…' }
+  const LOOK: Record<string, { color: string; label: string }> = {
+    live: { color: C.ok, label: 'firehose live' },
+    polling: { color: C.warn, label: 'firehose polling (no live feed)' },
+    frozen: { color: C.warn, label: 'firehose frozen — press f' },
+    connecting: { color: C.dim, label: 'firehose connecting…' },
+    error: { color: C.danger, label: 'firehose unavailable' },
+  }
+  const look = LOOK[status] ?? FALLBACK
   return (
     <header style={{ display: 'flex', alignItems: 'baseline', gap: '1rem', flexWrap: 'wrap' }}>
       <h1 style={{ margin: 0, fontSize: '1.25rem' }}>
@@ -329,8 +340,7 @@ function Header({
         <span style={{ color: C.dim }}>{engineError ? 'engine unreachable' : 'waiting…'}</span>
       )}
       <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: C.dim }}>
-        <span style={{ color: dot }}>●</span> firehose {status}
-        {status === 'frozen' && ' (press f)'}
+        <span style={{ color: look.color }}>●</span> {look.label}
       </span>
     </header>
   )
