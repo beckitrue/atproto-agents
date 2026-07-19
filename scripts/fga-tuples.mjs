@@ -16,9 +16,17 @@
  * "does not exist" as success — cleanup is idempotent by definition.
  */
 
-const FGA_API_URL = () => process.env.FGA_API_URL ?? 'https://api.us1.fga.dev'
+const FGA_API_URL = () => process.env.FGA_API_URL ?? 'http://localhost:8080'
 
+/**
+ * Get an FGA access token, or null when running against self-hosted OpenFGA.
+ *
+ * Self-hosted OpenFGA on the game's private network needs no auth, so — like
+ * the engine's `hasCredentials` gate — we only mint a token when client
+ * credentials are configured. No credentials → null → calls go unauthenticated.
+ */
 export async function fgaToken() {
+  if (!process.env.FGA_CLIENT_ID || !process.env.FGA_CLIENT_SECRET) return null
   const issuer = process.env.FGA_API_TOKEN_ISSUER ?? 'auth.fga.dev'
   const res = await fetch(`https://${issuer}/oauth/token`, {
     method: 'POST',
@@ -39,7 +47,10 @@ export async function fgaToken() {
 const call = async (token, path, body) =>
   fetch(`${FGA_API_URL()}/stores/${process.env.FGA_STORE_ID}${path}`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    headers: {
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      'content-type': 'application/json',
+    },
     body: JSON.stringify(body),
   })
 

@@ -53,7 +53,7 @@ below always works.)*
    authorization: your first attempt lands as `denied_authz` — publicly, on
    the referee's audit trail. That's the system working. An operator grants
    your turn tuple (`scripts/grant-guest.mjs <game>`) and the same call
-   succeeds. Watch authority appear on the FGA dashboard.
+   succeeds.
 
 ## Speaking vs. acting
 
@@ -73,13 +73,13 @@ Revocation is layered. Fastest and most surgical first:
 
 | Layer | Command | Effect | Latency |
 |---|---|---|---|
-| **FGA tuples** | `node scripts/grant-guest.mjs <game> --revoke` (guests) or delete the agent's standing role tuples | Authority gone — next move attempt is `denied_authz` | **Immediate** — engine checks use `HIGHER_CONSISTENCY`, no cache window |
+| **OpenFGA tuples** | `node scripts/grant-guest.mjs <game> --revoke` (guests) or delete the agent's standing role tuples | Authority gone — next move attempt is `denied_authz` | **Immediate** — engine checks use `HIGHER_CONSISTENCY`, no cache window |
 | **Auth0 client grant** | `node scripts/revoke-agent.mjs <name>` | Agent can no longer mint tokens for the game API | Immediate for *new* tokens; already-issued tokens stay valid until expiry (≤1h) |
 | **DID claim mapping** | Remove the agent from `infra/agents.json`, re-run `scripts/setup-auth0.mjs` | New tokens carry no DID → engine returns 401 | Same ≤1h in-flight-token caveat |
 | **PDS account** | Admin API (our-PDS agents only) | Silences the account on our PDS | Not applicable to foreign agents — see below |
 
-**Incident order:** FGA first (instant, and it covers the token-expiry window
-of the other layers), then the Auth0 grant, then the claim mapping if you
+**Incident order:** OpenFGA tuple first (instant, and it covers the token-expiry
+window of the other layers), then the Auth0 grant, then the claim mapping if you
 want the identity fully unlinked.
 
 > `revoke-agent.mjs` needs the `delete:client_grants` scope on the Auth0

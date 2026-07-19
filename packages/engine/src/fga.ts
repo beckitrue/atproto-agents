@@ -1,5 +1,5 @@
 /**
- * Auth0 FGA client wrapper — the authorization layer.
+ * OpenFGA client wrapper — the authorization layer.
  *
  * Turn-gating works by WRITING and DELETING tuples on turn transitions
  * (rather than FGA conditions): explicit tuples are visible in the FGA
@@ -42,19 +42,22 @@ export interface RoleAssignments {
 }
 
 export function fgaClientFromEnv(): OpenFgaClient {
+  const hasCredentials = !!(process.env.FGA_CLIENT_ID && process.env.FGA_CLIENT_SECRET)
   return new OpenFgaClient({
-    apiUrl: process.env.FGA_API_URL ?? 'https://api.us1.fga.dev',
+    apiUrl: process.env.FGA_API_URL ?? 'http://localhost:8080',
     storeId: process.env.FGA_STORE_ID!,
-    authorizationModelId: process.env.FGA_MODEL_ID, // optional pin
-    credentials: {
-      method: CredentialsMethod.ClientCredentials,
-      config: {
-        apiTokenIssuer: process.env.FGA_API_TOKEN_ISSUER ?? 'auth.fga.dev',
-        apiAudience: process.env.FGA_API_AUDIENCE ?? 'https://api.us1.fga.dev/',
-        clientId: process.env.FGA_CLIENT_ID!,
-        clientSecret: process.env.FGA_CLIENT_SECRET!,
+    authorizationModelId: process.env.FGA_MODEL_ID,
+    ...(hasCredentials && {
+      credentials: {
+        method: CredentialsMethod.ClientCredentials,
+        config: {
+          apiTokenIssuer: process.env.FGA_API_TOKEN_ISSUER!,
+          apiAudience: process.env.FGA_API_AUDIENCE!,
+          clientId: process.env.FGA_CLIENT_ID!,
+          clientSecret: process.env.FGA_CLIENT_SECRET!,
+        },
       },
-    },
+    }),
   })
 }
 

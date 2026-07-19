@@ -171,9 +171,11 @@ echo "PDS_JWT_SECRET=$(openssl rand --hex 16)"
 echo "PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX=$(openssl ecparam --name secp256k1 --genkey --noout --outform DER | tail --bytes=+8 | head --bytes=32 | xxd --plain --cols 32)"
 ```
 
-Fill in the Auth0 / FGA values too (the engine container won't be useful
-without them, but it will start). `DOMAIN=beckitrue.com` is already the
-default in `.env.example`.
+Fill in the Auth0 values too (the engine container won't be useful without
+them, but it will start). `DOMAIN=beckitrue.com` is already the default in
+`.env.example`. Leave `FGA_STORE_ID` and `FGA_MODEL_ID` blank — the
+`fga-init` service creates the OpenFGA store and writes the auth model
+automatically on first `docker compose up`.
 
 > ⚠️ Back up `PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX` somewhere safe
 > (password manager). It controls the DIDs' identity — losing it means losing
@@ -227,7 +229,7 @@ done
 ```
 
 Record each DID (in the `createAccount` response) — you'll need them for the
-FGA tuples and the Auth0 custom claims.
+OpenFGA tuples and the Auth0 custom claims.
 
 Verify handle resolution (this is what the network uses):
 

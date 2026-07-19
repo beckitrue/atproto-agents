@@ -1,8 +1,12 @@
-# The whole server-side stack: PDS + game engine behind Caddy.
+# The whole server-side stack: PDS + game engine + OpenFGA + Caddy.
 # Runs identically on the demo EC2 box and on your own machine/server.
 #
 #   cp .env.example .env   # fill in secrets
 #   docker compose up -d
+#
+# On first boot, fga-init creates the OpenFGA store and writes the auth model
+# automatically. FGA_STORE_ID and FGA_MODEL_ID are populated from .env if set,
+# or sourced from /fga-config/fga.env written by fga-init.
 #
 # DNS (Cloudflare, DNS-only for the apex handles you add):
 #   pds.<domain>            A  <server IP>   — the PDS
@@ -48,30 +52,87 @@ services:
       - PDS_CRAWLERS=https://bsky.network
       - LOG_ENABLED=true
 
+  # --- OpenFGA authorization layer ---
+
+  fga-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fga
+      POSTGRES_PASSWORD: fga
+      POSTGRES_DB: fga
+    volumes:
+      - fga_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fga"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  fga-migrate:
+    image: openfga/openfga:latest
+    command: migrate
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://fga:fga@fga-db:5432/fga
+    depends_on:
+      fga-db:
+        condition: service_healthy
+    restart: on-failure
+
+  fga:
+    image: openfga/openfga:latest
+    command: run
+    restart: unless-stopped
+    environment:
+      - OPENFGA_DATASTORE_ENGINE=postgres
+      - OPENFGA_DATASTORE_URI=postgres://fga:fga@fga-db:5432/fga
+    depends_on:
+      fga-migrate:
+        condition: service_completed_successfully
+    # Not exposed outside the compose network — engine talks to fga:8080 internally
+
+  fga-init:
+    image: node:22-slim
+    command: node /bootstrap/bootstrap.mjs
+    volumes:
+      - ./fga:/bootstrap:ro
+      - fga_config:/fga-config
+    environment:
+      - FGA_API_URL=http://fga:8080
+    depends_on:
+      fga:
+        condition: service_started
+    restart: on-failure
+
   engine:
     build:
       context: ..
       dockerfile: infra/engine.Dockerfile
     restart: unless-stopped
+    volumes:
+      - fga_config:/fga-config:ro
     environment:
       - PORT=8080
       - AUTH0_DOMAIN=${AUTH0_DOMAIN}
       - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
-      - FGA_API_URL=${FGA_API_URL}
-      - FGA_STORE_ID=${FGA_STORE_ID}
-      - FGA_MODEL_ID=${FGA_MODEL_ID}
-      - FGA_CLIENT_ID=${FGA_CLIENT_ID}
-      - FGA_CLIENT_SECRET=${FGA_CLIENT_SECRET}
-      - FGA_API_TOKEN_ISSUER=${FGA_API_TOKEN_ISSUER}
-      - FGA_API_AUDIENCE=${FGA_API_AUDIENCE}
+      - FGA_API_URL=http://fga:8080
+      # Set these in .env to pin specific IDs; otherwise fga-init auto-populates them.
+      - FGA_STORE_ID=${FGA_STORE_ID:-}
+      - FGA_MODEL_ID=${FGA_MODEL_ID:-}
       # The referee's PDS identity. Publishing is gated on the password being
       # present (see packages/engine/src/index.ts) and degrades silently when
       # it isn't — so omitting these costs the audit trail without an error.
       # Handle and service URL are derived from DOMAIN.
       - DOMAIN=${DOMAIN}
       - REFEREE_PDS_PASSWORD=${REFEREE_PDS_PASSWORD}
+    depends_on:
+      fga-init:
+        condition: service_completed_successfully
 
 volumes:
   caddy_data:
   caddy_config:
   pds_data:
+  fga_db_data:
+  fga_config:

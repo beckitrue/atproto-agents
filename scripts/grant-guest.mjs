@@ -35,28 +35,16 @@ if (!guest?.did?.startsWith('did:')) {
   process.exit(1)
 }
 
-const tokRes = await fetch(`https://${process.env.FGA_API_TOKEN_ISSUER ?? 'auth.fga.dev'}/oauth/token`, {
-  method: 'POST',
-  headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({
-    grant_type: 'client_credentials',
-    client_id: process.env.FGA_CLIENT_ID,
-    client_secret: process.env.FGA_CLIENT_SECRET,
-    audience: process.env.FGA_API_AUDIENCE ?? 'https://api.us1.fga.dev/',
-  }),
-})
-const { access_token } = await tokRes.json()
-
 const tuple = {
   user: `agent:${guest.did.replaceAll(':', '_')}`,
   relation: 'active_guesser',
   object: `game:${gameId}`,
 }
 const res = await fetch(
-  `${process.env.FGA_API_URL ?? 'https://api.us1.fga.dev'}/stores/${process.env.FGA_STORE_ID}/write`,
+  `${process.env.FGA_API_URL ?? 'http://localhost:8080'}/stores/${process.env.FGA_STORE_ID}/write`,
   {
     method: 'POST',
-    headers: { authorization: `Bearer ${access_token}`, 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify(revoke ? { deletes: { tuple_keys: [tuple] } } : { writes: { tuple_keys: [tuple] } }),
   },
 )

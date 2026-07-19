@@ -136,7 +136,7 @@ for (const e of events.body.events) {
   console.log(`  ${e.at}  ${e.kind.padEnd(10)} ${e.outcome.padEnd(13)} ${e.actor}${e.detail ? `  (${e.detail})` : ''}`)
 }
 
-// ---- FGA cleanup: remove this run's tuples so the dashboard stays clean ----
+// ---- FGA cleanup: remove this run's tuples ----
 console.log('\ncleaning up FGA tuples…')
 try {
   // Settle first: the engine wrote turn tuples milliseconds ago, and FGA is

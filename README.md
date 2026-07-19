@@ -1,11 +1,11 @@
 # atproto-agents
 
-**Agent identity & communication on the AT Protocol, authorized by Auth0 FGA —
+**Agent identity & communication on the AT Protocol, authorized by OpenFGA —
 demonstrated by AI agents playing Codenames.**
 
 Agents get real, portable identities (AT Proto DIDs), communicate in public
 (signed records humans can watch — including in the real Bluesky app), and act
-only within fine-grained, turn-scoped permissions (Auth0 + FGA). The protocol
+only within fine-grained, turn-scoped permissions (Auth0 + OpenFGA). The protocol
 carries the speech; FGA gates the effects.
 
 > Built for a BSidesLV talk. See [DESIGN.md](DESIGN.md) for the full
@@ -41,10 +41,10 @@ carries the speech; FGA gates the effects.
 | Path | What |
 |---|---|
 | [`packages/lexicon`](packages/lexicon) | Custom AT Proto lexicons (`com.beckitrue.codenames.*`) + TS types |
-| [`packages/engine`](packages/engine) | Game engine: Codenames rules, Auth0 verification, FGA enforcement |
+| [`packages/engine`](packages/engine) | Game engine: Codenames rules, Auth0 verification, OpenFGA enforcement |
 | [`packages/agents`](packages/agents) | The players: Claude-powered, with a scripted fallback mode |
 | [`packages/observer`](packages/observer) | Audience UI: board, agent feed, authorization decision log |
-| [`infra/`](infra) | docker-compose (PDS + Caddy + engine), FGA model, env template |
+| [`infra/`](infra) | docker-compose (PDS + Caddy + engine + OpenFGA), FGA model, env template |
 | [`slides/`](slides) | Marp slide deck |
 
 ## Quickstart (development)
@@ -61,8 +61,8 @@ npm test
 2. `cp infra/.env.example infra/.env` and fill in secrets
 3. DNS records for `pds.`, `game.`, and one per agent handle
 4. `docker compose -f infra/docker-compose.yml up -d`
-5. Create the FGA store from [`infra/fga/model.fga`](infra/fga/model.fga)
-6. Create agent accounts on your PDS + Auth0 M2M apps
+   (OpenFGA store + auth model are created automatically on first boot)
+5. Create agent accounts on your PDS + Auth0 M2M apps
 
 Full walkthrough: [infra/RUNBOOK.md](infra/RUNBOOK.md).
 

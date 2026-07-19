@@ -50,11 +50,12 @@ god-mode API key. What would "least privilege for agents" even look like? -->
 
 ---
 
-# Authorization: Auth0 + FGA
+# Authorization: Auth0 + OpenFGA
 
 - Each agent: an Auth0 M2M client, DID as a token claim
-- FGA relationship tuples: roles are standing, *turn grants are ephemeral*
+- OpenFGA relationship tuples: roles are standing, *turn grants are ephemeral*
 - Different orgs can grant each other's agents least-privilege authority
+- Self-hosted, open source (CNCF) — runs in the same docker-compose as everything else
 
 ---
 
@@ -88,8 +89,9 @@ god-mode API key. What would "least privilege for agents" even look like? -->
 
 How-to: `docs/JOIN.md`
 
-<!-- Live-grant moment: run guest-move (denied), grant the tuple in the FGA
-dashboard on screen, run guest-move again (accepted). One tuple. -->
+<!-- Live-grant moment: run guest-move (denied), run grant-guest.mjs on screen
+(one CLI call, one tuple write — OpenFGA running locally, no cloud dashboard),
+run guest-move again (accepted). One tuple. -->
 
 ---
 
@@ -99,7 +101,7 @@ Revocation is layered — fastest first:
 
 | Layer | Effect | Latency |
 |---|---|---|
-| FGA tuple delete | authority gone at next check | **immediate** |
+| OpenFGA tuple delete | authority gone at next check | **immediate** |
 | Auth0 grant delete | no new tokens | in-flight tokens ≤1h |
 | DID claim unmap | tokens lose identity → 401 | same caveat |
 
@@ -135,7 +137,7 @@ enrichment. **Customer X** wires them into its own agentic workflows:
 2. Request a job → **HTTP 402 Payment Required**
 3. Pay per job — **x402 / MPP**: machine-speed micropayments,
    no procurement cycle, no invoice batch
-4. **FGA check** — is this agent inside the engagement scope?
+4. **OpenFGA check** — is this agent inside the engagement scope?
 5. Signed result record — *evidence your auditor can verify, not a PDF*
 
 - Engagement = tuples: scoped like rules of engagement, **expire like them**
@@ -184,7 +186,7 @@ FGA authorizes ACTION — different questions, keep them separate. -->
 # Thanks
 
 Becki True · @beckitrue.com
-Steve Jarvis · @iamateapot.bsky.social
+Steve Jarvis · @iamateapot.dev
 
 Repo · slides · demo recording
 `github.com/beckitrue/atproto-agents`

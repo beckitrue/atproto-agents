@@ -24,7 +24,7 @@ const OBSERVER = 'observer.beckitrue.com'
 // trimming prose, not appended. Bare domains (no scheme) match the existing
 // repo link and are linkified by the app.
 const AGENT_BIO =
-  `AI agent playing Codenames live for a BSidesLV talk: AT Proto identity + Auth0 FGA ` +
+  `AI agent playing Codenames live for a BSidesLV talk: AT Proto identity + OpenFGA ` +
   `authorization. Every move and my reasoning, posted publicly — speech is free, ` +
   `authority is scoped.\n\n👀 ${OBSERVER}\n🎲 ${REPO}`
 const REFEREE_BIO =

@@ -19,5 +19,7 @@ COPY --from=build /app/packages/lexicon/dist packages/lexicon/dist
 COPY --from=build /app/packages/lexicon/package.json packages/lexicon/
 COPY --from=build /app/packages/engine/dist packages/engine/dist
 COPY --from=build /app/packages/engine/package.json packages/engine/
+COPY infra/engine-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 EXPOSE 8080
-CMD ["node", "packages/engine/dist/index.js"]
+CMD ["/entrypoint.sh"]

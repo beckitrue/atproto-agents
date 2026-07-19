@@ -1,6 +1,6 @@
 # Agent Identity & Communication on the AT Protocol
 
-**BSidesLV talk + demo: AT Protocol for agent identity and communication, Auth0 + FGA for
+**BSidesLV talk + demo: AT Protocol for agent identity and communication, Auth0 + OpenFGA for
 cross-organization authorization, proven by AI agents playing Codenames.**
 
 ## Thesis
@@ -9,7 +9,7 @@ Agents need portable, verifiable identities and *transparent* communication.
 
 - **AT Protocol** provides identity (DIDs), auditable communication (signed public data
   repos), and cross-org interop (federation).
-- **Auth0 + FGA** provides fine-grained, time-boxed authorization — showing that different
+- **Auth0 + OpenFGA** provides fine-grained, time-boxed authorization — showing that different
   organizations can safely let each other's agents interact.
 - **Codenames** proves it: role-based, turn-based, human-observable, and with a natural
   cheating story for rogue-agent demos.
@@ -36,15 +36,15 @@ uses the *same mechanism* as the rogue demo.
 | **Custom lexicon** | Structured record types for game events: `clue`, `guess`, `pass`, `gameState`. The machine-readable agent-to-agent channel. |
 | **Bluesky mirror** | Each move is also posted as a human-readable `app.bsky.feed.post`, so the audience can follow the game in the real Bluesky app. |
 | **Game engine** | The referee and **enforcement point**. Verifies Auth0 tokens, maps DID ↔ identity, checks FGA per move, maintains canonical game state, writes/deletes turn tuples. |
-| **FGA model** | Auth0 FGA (managed). Standing role tuples + ephemeral turn tuples (see below). |
+| **FGA model** | OpenFGA (self-hosted, runs in docker-compose). Standing role tuples + ephemeral turn tuples (see below). |
 | **Auth0** | M2M client-credentials per agent; token carries the agent's DID as a custom claim. |
 | **Agents** | 4 LLM-powered players (Claude) with a deterministic scripted-fallback mode for demo resilience. Plus rogue scenarios. |
 | **Observer UI** | Web app: game board + live feed of agent posts + FGA decision log. |
 | **Slides** | Marp (markdown), versioned in this repo. |
 
-**Stack:** TypeScript throughout (official PDS, `@atproto/api`, lexicon tooling, Auth0/FGA JS SDKs).
+**Stack:** TypeScript throughout (official PDS, `@atproto/api`, lexicon tooling, Auth0 + `@openfga/sdk`).
 
-## Authorization model (Auth0 FGA)
+## Authorization model (OpenFGA)
 
 Turn-gating is done by the game engine **writing/deleting tuples on turn transitions**
 (not conditions) — explicit tuples are visible on stage: the audience watches authority
@@ -210,14 +210,14 @@ pretend public data can be private."*
 1. Public GitHub repo: PDS deployment config, lexicon, game engine, agents, observer UI,
    FGA model, setup docs for others to run it and to federate their own agents in.
 2. Marp slide deck (in-repo) making the case for AT Proto agent identity/communication,
-   federation benefits, and Auth0/FGA cross-org authorization.
+   federation benefits, and Auth0/OpenFGA cross-org authorization.
 3. Live demo + recorded backup.
 
 ## Timeline (talk: early August — BSidesLV)
 
 | Week | Dates | Goals |
 |---|---|---|
-| 1 | Jul 8–14 | Repo scaffold; PDS live on domain; lexicon draft; FGA model in Auth0 FGA; Auth0 tenant + M2M clients; game engine core (rules + FGA checks) |
+| 1 | Jul 8–14 | Repo scaffold; PDS live on domain; lexicon draft; FGA model in OpenFGA; Auth0 tenant + M2M clients; game engine core (rules + FGA checks) |
 | 2 | Jul 15–21 | LLM agents + scripted fallback; Bluesky mirror posts; full game loop end-to-end; federation with relay established |
 | 3 | Jul 22–28 | Observer UI; all 5 demo beats rehearsable; slides draft; contributor docs |
 | 4 | Jul 29–talk | Rehearsals; recorded backup; slide polish; buffer |
@@ -236,7 +236,7 @@ pretend public data can be private."*
 - **Agents run on the presenter's laptop** during the demo — outbound HTTPS only, and
   their reasoning/logs can be shown live on stage.
 - **Auth0:** Becki's existing test tenant; one M2M application per agent.
-- **Auth0 FGA:** separate signup from the Auth0 tenant (dashboard.fga.dev, free tier).
+- **OpenFGA:** self-hosted, runs as `fga` service in docker-compose (no external account needed).
 - Optional (week 3): small Terraform module for EC2/EIP/security group so "deploy your
   own" is one `terraform apply`.
 
@@ -248,8 +248,8 @@ pretend public data can be private."*
 - Auth0 set up via `scripts/setup-auth0.mjs` (idempotent): game API, one M2M app per
   agent, client grants, and a credentials-exchange Action stamping each agent's DID onto
   its tokens. Credentials in `infra/.env` (gitignored).
-- Auth0 FGA store + authorization model created; IDs in `infra/.env`.
-- Game engine core complete and live-smoke-tested against real Auth0 + FGA
+- OpenFGA store + authorization model created automatically by `fga-init` on `docker compose up`; IDs in `/fga-config/fga.env` on the server volume.
+- Game engine core complete and live-smoke-tested against real Auth0 + OpenFGA
   (`scripts/smoke-engine.mjs` — all demo beats pass; FGA checks use HIGHER_CONSISTENCY).
 - Agents built (`packages/agents`): Claude brain (Opus 4.8, structured outputs, public
   reasoning per move) with deterministic scripted fallback — any LLM failure degrades to
@@ -267,7 +267,7 @@ pretend public data can be private."*
 
 ## Open items
 
-- [x] Create Auth0 FGA store — done; store/model IDs in `infra/.env`
+- [x] OpenFGA store — auto-created by `fga-init` on `docker compose up`
 - [x] Anthropic API key for the agent players — done; first full LLM game played
   end-to-end (4 Opus-brained agents, 30/30 events accepted, zero fallbacks)
 - [ ] Codenames IP note: use the classic rules with our own word list / board art (avoid trademark assets)

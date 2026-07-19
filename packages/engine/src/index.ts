@@ -3,8 +3,8 @@
  *
  * Env (see infra/.env.example):
  *   AUTH0_DOMAIN, AUTH0_AUDIENCE          — token verification
- *   FGA_STORE_ID, FGA_CLIENT_ID, FGA_CLIENT_SECRET (+ optional FGA_API_URL,
- *   FGA_MODEL_ID, FGA_API_TOKEN_ISSUER, FGA_API_AUDIENCE) — authorization
+ *   FGA_API_URL, FGA_STORE_ID, FGA_MODEL_ID — authorization (auto-populated
+ *   from /fga-config/fga.env by fga-init if not set explicitly)
  *   PORT (default 8080)
  */
 import Fastify from 'fastify'
