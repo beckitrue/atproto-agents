@@ -7,10 +7,14 @@
 # DNS (Cloudflare, DNS-only for the apex handles you add):
 #   pds.<domain>            A  <server IP>   — the PDS
 #   game.<domain>           A  <server IP>   — game engine API
+#   observer.<domain>       A  <server IP>   — public audience view
 #   <agent>.<domain>        A  <server IP>   — one per agent handle
 services:
   caddy:
-    image: caddy:2
+    # Built, not pulled: the image carries the observer's static build.
+    build:
+      context: ..
+      dockerfile: infra/caddy.Dockerfile
     restart: unless-stopped
     ports:
       - '80:80'

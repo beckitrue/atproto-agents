@@ -19,3 +19,18 @@ referee.{$DOMAIN} {
 game.{$DOMAIN} {
 	reverse_proxy engine:8080
 }
+
+# Observer — the public audience view. Static build baked into this image
+# (infra/caddy.Dockerfile), with /api proxied to the engine on the SAME
+# origin, so the UI needs no CORS and no per-environment API base URL.
+observer.{$DOMAIN} {
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy engine:8080
+	}
+	handle {
+		root * /srv/observer
+		try_files {path} /index.html
+		file_server
+	}
+}

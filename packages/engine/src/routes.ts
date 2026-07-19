@@ -176,6 +176,26 @@ export function registerRoutes(app: FastifyInstance, deps: RouteDeps): void {
     return reply.status(status).send(body)
   })
 
+  /**
+   * Public game index — how a visitor with no `?game=` finds the live one.
+   * Most recently active first, so the observer can just take games[0].
+   */
+  app.get('/games', async (_req, reply) => {
+    const games = store
+      .list()
+      .map((game) => ({
+        id: game.state.id,
+        turn: game.state.turn,
+        phase: game.state.phase,
+        winner: game.state.winner,
+        events: game.events.length,
+        startedAt: game.events[0]?.at ?? null,
+        lastEventAt: game.events.at(-1)?.at ?? null,
+      }))
+      .sort((a, b) => (b.lastEventAt ?? '').localeCompare(a.lastEventAt ?? ''))
+    return reply.send({ games })
+  })
+
   /** Public game state — no auth needed; transparency is the point. */
   app.get<{ Params: { id: string } }>('/games/:id', async (req, reply) => {
     const game = store.get(req.params.id)

@@ -38,7 +38,12 @@ interface GameEvent {
   at: string
 }
 
-const gameId = new URLSearchParams(location.search).get('game') ?? ''
+/**
+ * `?game=<id>` pins a specific game (what the demo driver uses). With no
+ * query string — how the public URL is reached — we ask the engine for the
+ * most recently active game, so an attendee just opens observer.<domain>.
+ */
+const requestedGame = new URLSearchParams(location.search).get('game')
 
 const TEAM_COLOR = { red: '#e05252', blue: '#4d8fd6' } as const
 
@@ -80,9 +85,35 @@ const shortActor = (actor: string) =>
   actor.startsWith('did:') ? `…${actor.slice(-8)}` : actor
 
 export function App() {
+  const [gameId, setGameId] = useState<string | null>(requestedGame)
   const [state, setState] = useState<GameState | null>(null)
   const [events, setEvents] = useState<GameEvent[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  // Keep asking until a game exists: the page is often open on the projector
+  // before the driver runs new-game.mjs, and it should pick the game up by
+  // itself rather than needing a reload mid-talk.
+  useEffect(() => {
+    if (gameId) return
+    let live = true
+    const find = async () => {
+      try {
+        const res = await fetch('/api/games').then((r) => r.json())
+        if (!live) return
+        const next = res.games?.[0]?.id
+        if (next) setGameId(next)
+        setError(null)
+      } catch (err) {
+        if (live) setError((err as Error).message)
+      }
+    }
+    find()
+    const id = setInterval(find, 3000)
+    return () => {
+      live = false
+      clearInterval(id)
+    }
+  }, [gameId])
 
   useEffect(() => {
     if (!gameId) return
@@ -107,10 +138,12 @@ export function App() {
       live = false
       clearInterval(id)
     }
-  }, [])
+  }, [gameId])
 
   if (!gameId) {
-    return <Shell>Pass a game id: <code>?game=&lt;id&gt;</code></Shell>
+    return (
+      <Shell>{error ? `engine unreachable: ${error}` : 'waiting for a game to start…'}</Shell>
+    )
   }
   if (!state) {
     return <Shell>{error ? `engine unreachable: ${error}` : 'loading…'}</Shell>
