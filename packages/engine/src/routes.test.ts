@@ -287,6 +287,23 @@ describe('public surfaces', () => {
     expect(board.some((c) => c.revealed && c.cardType === 'red')).toBe(true)
   })
 
+  it('the game index is public and most-recently-active first', async () => {
+    // A visitor arriving at the observer with no ?game= takes games[0].
+    await post('/games', null, { id: 'g2', roles: ROLES, seed: SEED })
+    await post('/games/g1/clue', 'red-spymaster', { word: 'valid', count: 2 })
+
+    const res = await get('/games') // no token
+    expect(res.statusCode).toBe(200)
+    const games = res.json().games as Array<{ id: string; events: number; phase: string }>
+    expect(games.map((g) => g.id)).toEqual(['g1', 'g2'])
+    expect(games[0]).toMatchObject({ id: 'g1', phase: 'awaiting_guesses', events: 2 })
+  })
+
+  it('the index never leaks the key card', async () => {
+    const res = await get('/games')
+    expect(JSON.stringify(res.json())).not.toContain('assassin')
+  })
+
   it('the event log is public — the audit trail is the product', async () => {
     await post('/games/g1/clue', 'blue-spymaster', { word: 'sneaky', count: 1 }) // denied
     const res = await get('/games/g1/events')

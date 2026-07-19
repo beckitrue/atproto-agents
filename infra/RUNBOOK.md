@@ -111,6 +111,7 @@ direct for ACME certificates; the orange-cloud proxy breaks that.
 |------|------|---------|-------|
 | A | `pds` | `$EIP` | DNS only |
 | A | `game` | `$EIP` | DNS only |
+| A | `observer` | `$EIP` | DNS only |
 | A | `red-spymaster` | `$EIP` | DNS only |
 | A | `red-operative` | `$EIP` | DNS only |
 | A | `blue-spymaster` | `$EIP` | DNS only |
@@ -266,6 +267,7 @@ If profiles don't appear within ~15 minutes, check
 |---|---|
 | Logs | `docker compose logs -f [pds\|engine\|caddy]` |
 | Deploy new engine code | `git pull && docker compose build engine && docker compose up -d engine` |
+| Deploy new observer code | `git pull && docker compose build caddy && docker compose up -d caddy` (the observer's static build is baked into the caddy image) |
 | Update PDS image | `docker compose pull pds && docker compose up -d pds` |
 | Restart everything | `docker compose restart` |
 | Backup | EBS snapshot of the volume (PDS data lives in the `pds_data` docker volume) |
