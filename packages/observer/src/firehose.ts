@@ -13,7 +13,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PDS_URL, PLAYER_DIDS, REFEREE_DID, ROSTER } from './roster.js'
 
-const JETSTREAM = 'wss://jetstream2.us-east.bsky.network/subscribe'
+/**
+ * More than one Jetstream, deliberately.
+ *
+ * Instances consume different relays, and not every relay crawls a small
+ * self-hosted PDS: jetstream2.us-east firehoses ~800 commits/sec while
+ * carrying NOTHING from pds.beckitrue.com — verified by subscribing
+ * unfiltered and watching 14k commits go by without one of ours. Pointing at
+ * a single instance is therefore a coin flip on whether this column ever
+ * receives a live record.
+ *
+ * Subscribing to several and deduping by record key (seenKeys) costs almost
+ * nothing, because the collection filter makes each stream nearly silent.
+ */
+const JETSTREAM_HOSTS = [
+  'jetstream1.us-east.bsky.network',
+  'jetstream1.us-west.bsky.network',
+]
 const NSID_PREFIX = 'com.beckitrue.codenames.'
 const MOVE_COLLECTIONS = ['clue', 'guess', 'pass'].map((k) => NSID_PREFIX + k)
 
@@ -235,29 +251,43 @@ export function useFirehose(gameId: string | null, rosterOnly: boolean): Firehos
       return
     }
     let live = true
-    let ws: WebSocket | null = null
-    let retry: ReturnType<typeof setTimeout> | undefined
+    const sockets: WebSocket[] = []
+    const retries: Array<ReturnType<typeof setTimeout>> = []
+    const open = new Set<string>()
 
-    const connect = () => {
+    const syncStatus = () => {
       if (!live) return
-      setStatus('connecting')
+      setStatus(open.size > 0 ? 'live' : 'polling')
+    }
+
+    const connect = (host: string) => {
+      if (!live) return
+      let ws: WebSocket
       try {
-        ws = new WebSocket(`${JETSTREAM}?wantedCollections=${NSID_PREFIX}*`)
+        ws = new WebSocket(`wss://${host}/subscribe?wantedCollections=${NSID_PREFIX}*`)
       } catch {
         // Some browsers block WebSocket by THROWING here rather than failing
         // asynchronously. Uncaught, that escapes the effect and the polling
         // fallback never starts — the column would sit empty forever.
-        setStatus('polling')
-        retry = setTimeout(connect, 15000)
+        syncStatus()
+        retries.push(setTimeout(() => connect(host), 15000))
         return
       }
-      ws.onopen = () => live && setStatus('live')
-      ws.onerror = () => live && setStatus('polling')
+      sockets.push(ws)
+      ws.onopen = () => {
+        open.add(host)
+        syncStatus()
+      }
+      ws.onerror = () => {
+        open.delete(host)
+        syncStatus()
+      }
       ws.onclose = () => {
         if (!live) return
+        open.delete(host)
         // Not 'error': the polling fallback keeps the column correct.
-        setStatus('polling')
-        retry = setTimeout(connect, 3000)
+        syncStatus()
+        retries.push(setTimeout(() => connect(host), 3000))
       }
       ws.onmessage = (ev) => {
         if (!live) return
@@ -278,6 +308,8 @@ export function useFirehose(gameId: string | null, rosterOnly: boolean): Firehos
         const row = toRow(msg.did, c.collection, c.record ?? {}, key, gameId)
         if (!row) return
 
+        // Duplicates across instances are expected and handled by ingest's
+        // key-based novelty check.
         if (row.seated || !rosterOnly) ingest([row])
         else {
           strangerDids.current.add(row.did)
@@ -285,12 +317,13 @@ export function useFirehose(gameId: string | null, rosterOnly: boolean): Firehos
         }
       }
     }
-    connect()
+    setStatus('connecting')
+    JETSTREAM_HOSTS.forEach(connect)
 
     return () => {
       live = false
-      if (retry) clearTimeout(retry)
-      ws?.close()
+      retries.forEach(clearTimeout)
+      sockets.forEach((s2) => s2.close())
     }
   }, [gameId, rosterOnly, frozen, ingest])
 
