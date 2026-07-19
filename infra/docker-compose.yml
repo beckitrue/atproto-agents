@@ -64,6 +64,12 @@ services:
       - FGA_CLIENT_SECRET=${FGA_CLIENT_SECRET}
       - FGA_API_TOKEN_ISSUER=${FGA_API_TOKEN_ISSUER}
       - FGA_API_AUDIENCE=${FGA_API_AUDIENCE}
+      # The referee's PDS identity. Publishing is gated on the password being
+      # present (see packages/engine/src/index.ts) and degrades silently when
+      # it isn't — so omitting these costs the audit trail without an error.
+      # Handle and service URL are derived from DOMAIN.
+      - DOMAIN=${DOMAIN}
+      - REFEREE_PDS_PASSWORD=${REFEREE_PDS_PASSWORD}
 
 volumes:
   caddy_data:
