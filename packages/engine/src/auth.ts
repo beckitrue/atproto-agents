@@ -1,20 +1,24 @@
 /**
- * Auth0 authentication — verifies M2M client-credentials tokens.
+ * AT Proto service-auth verification.
  *
- * Each agent is an Auth0 Machine-to-Machine application. The agent's AT Proto
- * DID travels as a custom claim on the access token, set by an Auth0 Action
- * on the client-credentials exchange. Authentication answers "who is this?";
+ * Each agent asks its OWN PDS for a short-lived JWT via
+ * com.atproto.server.getServiceAuth: iss = the agent's DID, aud = this
+ * engine's DID, signed by the agent's repo key. We verify with zero shared
+ * secrets — resolve the issuer DID to its signing key (through the PLC
+ * directory) and check the signature. Authentication answers "who is this?";
  * FGA answers "may they do this?".
+ *
+ * No IdP: the DID *is* the identity. A token minted on any PDS in the network
+ * — including a guest on a foreign PDS — verifies the exact same way.
  */
-import { createRemoteJWKSet, jwtVerify } from 'jose'
+import { IdResolver } from '@atproto/identity'
+import { verifyJwt } from '@atproto/xrpc-server'
 
-/** Custom claim carrying the agent's AT Proto DID */
-export const DID_CLAIM = 'https://beckitrue.com/atproto_did'
+/** The engine's own AT Proto identity (the referee DID) — the audience agents mint for. */
+const DEFAULT_ENGINE_DID = 'did:plc:xgdzu5egqclsjtiwiv7rkf2k'
 
 export interface AgentIdentity {
-  /** Auth0 client ID (token sub) */
-  sub: string
-  /** AT Proto DID from the custom claim */
+  /** AT Proto DID of the caller — the verified token issuer (iss). */
   did: string
 }
 
@@ -25,29 +29,27 @@ export class AuthError extends Error {
   }
 }
 
-export function createVerifier(opts?: { domain?: string; audience?: string }) {
-  const domain = opts?.domain ?? process.env.AUTH0_DOMAIN!
-  const audience = opts?.audience ?? process.env.AUTH0_AUDIENCE ?? 'https://game.beckitrue.com'
-  const jwks = createRemoteJWKSet(new URL(`https://${domain}/.well-known/jwks.json`))
+export function createVerifier(opts?: { engineDid?: string; plcUrl?: string }) {
+  const engineDid = opts?.engineDid ?? process.env.ENGINE_DID ?? DEFAULT_ENGINE_DID
+  // Point at a self-contained dev PLC to keep local runs off the public
+  // plc.directory; unset → @atproto/identity defaults to plc.directory.
+  const plcUrl = opts?.plcUrl ?? process.env.PLC_DIRECTORY_URL
+  const idr = new IdResolver(plcUrl ? { plcUrl } : {})
+  const getSigningKey = (iss: string, forceRefresh: boolean) =>
+    idr.did.resolveAtprotoKey(iss, forceRefresh)
 
   return async function verifyBearer(authorizationHeader: string | undefined): Promise<AgentIdentity> {
     if (!authorizationHeader?.startsWith('Bearer ')) {
       throw new AuthError('missing bearer token')
     }
     const token = authorizationHeader.slice('Bearer '.length)
-    let payload
     try {
-      ;({ payload } = await jwtVerify(token, jwks, {
-        issuer: `https://${domain}/`,
-        audience,
-      }))
+      // ownDid enforces the aud binding; lxm=null — this is a REST engine, the
+      // token isn't bound to a lexicon method.
+      const payload = await verifyJwt(token, engineDid, null, getSigningKey)
+      return { did: payload.iss }
     } catch (err) {
       throw new AuthError(`token verification failed: ${(err as Error).message}`)
     }
-    const did = payload[DID_CLAIM]
-    if (typeof did !== 'string' || !did.startsWith('did:')) {
-      throw new AuthError(`token missing ${DID_CLAIM} claim`)
-    }
-    return { sub: payload.sub as string, did }
   }
 }

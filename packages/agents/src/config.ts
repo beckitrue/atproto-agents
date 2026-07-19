@@ -1,10 +1,10 @@
 /**
  * Agent roster. Each agent has:
- *  - an AT Proto identity (DID + handle) on our PDS   — who it IS
- *  - an Auth0 M2M application (client id/secret)      — how it AUTHENTICATES
+ *  - an AT Proto identity (DID + handle) on our PDS   — who it IS, and how it
+ *    AUTHENTICATES: it logs into its PDS and mints a service-auth JWT
  *  - a role in the game                               — what FGA AUTHORIZES
  *
- * Secrets come from env; this file is the public shape.
+ * Secrets (the PDS password) come from env; this file is the public shape.
  */
 import type { Team } from '@atproto-agents/lexicon'
 
@@ -15,7 +15,7 @@ export interface AgentConfig {
   handle: string
   team: Team
   role: Role
-  /** env var prefix, e.g. RED_SPYMASTER → RED_SPYMASTER_AUTH0_CLIENT_ID etc. */
+  /** env var prefix, e.g. RED_SPYMASTER → RED_SPYMASTER_PDS_PASSWORD */
   envPrefix: string
 }
 

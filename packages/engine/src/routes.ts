@@ -2,7 +2,7 @@
  * HTTP API — where authentication, authorization, and rules meet.
  *
  * Every move endpoint runs the same sequence:
- *   1. AUTHENTICATE  — verify the Auth0 token, extract the agent's DID
+ *   1. AUTHENTICATE  — verify the service-auth token, extract the agent's DID
  *   2. AUTHORIZE     — FGA check; denial => 403 + `denied_authz` event
  *   3. VALIDATE      — game rules; violation => 422 + `denied_rules` event
  *   4. COMMIT        — apply move, transition turn tuples, record event

@@ -45,7 +45,7 @@ async function fakeVerifyBearer(header: string | undefined): Promise<AgentIdenti
   const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined
   const did = token ? TOKENS[token] : undefined
   if (!did) throw new AuthError('missing or unknown token')
-  return { sub: `client-${token}`, did }
+  return { did }
 }
 
 /** In-memory FGA: a tuple set plus the model's rewrite rules. */

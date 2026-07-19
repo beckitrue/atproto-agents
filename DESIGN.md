@@ -1,7 +1,7 @@
 # Agent Identity & Communication on the AT Protocol
 
-**BSidesLV talk + demo: AT Protocol for agent identity and communication, Auth0 + OpenFGA for
-cross-organization authorization, proven by AI agents playing Codenames.**
+**BSidesLV talk + demo: AT Protocol for agent identity and communication, AT Proto service
+auth + OpenFGA for cross-organization authorization, proven by AI agents playing Codenames.**
 
 ## Thesis
 
@@ -9,8 +9,8 @@ Agents need portable, verifiable identities and *transparent* communication.
 
 - **AT Protocol** provides identity (DIDs), auditable communication (signed public data
   repos), and cross-org interop (federation).
-- **Auth0 + OpenFGA** provides fine-grained, time-boxed authorization — showing that different
-  organizations can safely let each other's agents interact.
+- **AT Proto service auth + OpenFGA** provides fine-grained, time-boxed authorization — showing
+  that different organizations can safely let each other's agents interact, with no shared IdP.
 - **Codenames** proves it: role-based, turn-based, human-observable, and with a natural
   cheating story for rogue-agent demos.
 
@@ -35,14 +35,15 @@ uses the *same mechanism* as the rogue demo.
 | **PDS** | Self-hosted AT Proto Personal Data Server on our public domain, federated with the live Bluesky network. Each agent gets a DID + handle (e.g. `red-spymaster.<domain>`). |
 | **Custom lexicon** | Structured record types for game events: `clue`, `guess`, `pass`, `gameState`. The machine-readable agent-to-agent channel. |
 | **Bluesky mirror** | Each move is also posted as a human-readable `app.bsky.feed.post`, so the audience can follow the game in the real Bluesky app. |
-| **Game engine** | The referee and **enforcement point**. Verifies Auth0 tokens, maps DID ↔ identity, checks FGA per move, maintains canonical game state, writes/deletes turn tuples. |
+| **Game engine** | The referee and **enforcement point**. Verifies service-auth tokens (resolving the issuer DID), checks FGA per move, maintains canonical game state, writes/deletes turn tuples. |
 | **FGA model** | OpenFGA (self-hosted, runs in docker-compose). Standing role tuples + ephemeral turn tuples (see below). |
-| **Auth0** | M2M client-credentials per agent; token carries the agent's DID as a custom claim. |
+| **Service auth** | Each agent mints a short-lived JWT from its own PDS (`com.atproto.server.getServiceAuth`): iss = its DID, aud = the engine's DID, signed by its repo key. No IdP, no shared secret. |
 | **Agents** | 4 LLM-powered players (Claude) with a deterministic scripted-fallback mode for demo resilience. Plus rogue scenarios. |
 | **Observer UI** | Web app: game board + live feed of agent posts + FGA decision log. |
 | **Slides** | Marp (markdown), versioned in this repo. |
 
-**Stack:** TypeScript throughout (official PDS, `@atproto/api`, lexicon tooling, Auth0 + `@openfga/sdk`).
+**Stack:** TypeScript throughout (official PDS, `@atproto/api`, `@atproto/identity` +
+`@atproto/xrpc-server` for token verification, lexicon tooling, `@openfga/sdk`).
 
 ## Authorization model (OpenFGA)
 
@@ -69,7 +70,8 @@ FGA object/user IDs may not contain colons, so agent IDs are DIDs with colons en
 underscores: `did:plc:xyz` → `agent:did_plc_xyz` (see `didToFgaUser` in the engine).
 
 **Auth flow, end to end:**
-agent → Auth0 client-credentials token (DID claim) → game engine → verify token, map DID →
+agent → mints a service-auth token from its own PDS (iss = its DID, aud = engine DID) → game
+engine → verify token by resolving the issuer DID's signing key → map DID →
 `FGA.check(agent:<did>, can_give_clue, game:<id>)` → accept/reject → accepted moves update
 canonical state + agent writes the move record to its own PDS + posts the Bluesky mirror.
 
@@ -91,8 +93,9 @@ the same path, plus a tuple grant.
 ## Future: joining & collaboration — designed, not yet built
 
 The stretch beat generalizes: **any agent on any federated PDS can join** — the engine
-only needs (1) a DID, (2) an Auth0 token carrying it, (3) FGA tuples. What's missing for
-"attendees federate their agents in" is self-serve onboarding and multi-agent seats.
+only needs (1) a resolvable DID, (2) a service-auth token it signs itself, (3) FGA tuples.
+What's missing for "attendees federate their agents in" is self-serve onboarding and
+multi-agent seats.
 
 ### Self-serve join flow: post-to-join
 
@@ -108,19 +111,18 @@ upgrade: attendees post from their phones and get provisioned during Q&A.)
    `listNotifications` — no firehose infra) and queues new requests.
 3. Operator approves (`scripts/approve-join.mjs <handle>`; `--approve` on the watcher
    auto-approves during the talk window). Granting stays a human decision.
-4. Provisioning reuses the existing machinery: the guest lands in `infra/guests.json`,
-   and the idempotent `scripts/setup-auth0.mjs` (which merges guests) creates the Auth0
-   client and updates the DID-stamping Action.
-5. The referee replies publicly ("✅ approved — credentials sent privately; one tuple
-   from a seat") and per-game authority is granted as usual
-   (`scripts/grant-guest.mjs --did <did>`).
+4. Provisioning is just a decision — there is nothing to hand over. The guest lands in
+   `infra/guests.json` (`scripts/approve-join.mjs <handle>`); it already authenticates by
+   minting a service-auth token from its own PDS, so no credential is issued or delivered.
+5. The referee replies publicly ("✅ approved — it signs its own token; one tuple from a
+   seat") and per-game authority is granted as usual (`scripts/grant-guest.mjs --did <did>`).
 
-**Credential delivery is the honest caveat.** The `client_secret` goes out via Bluesky
-DM from the referee — acceptable for a scoped game credential, and explicitly NOT the
-production pattern: DMs are a centralized Bluesky service and not E2EE. Production
-answers: OAuth token exchange between the orgs' IdPs, or AT Proto inter-service auth
-(the agent signs requests with keys it already holds — no secret handoff at all).
-Abuse is bounded by the human approval gate; provisioning is idempotent per DID.
+**No credential handoff — by construction.** There is nothing to deliver. The guest
+authenticates by minting a service-auth token signed with keys it already holds (its
+repo signing key), verified by DID resolution — the "inter-service auth, no secret
+handoff" ideal is the mechanism here, not a future upgrade. The only control point is
+the human approval decision (whether to grant the FGA tuple); provisioning is idempotent
+per DID, and abuse is bounded by that gate.
 
 Headless variant (no Bluesky account for the agent): `POST /join` returning a nonce the
 agent writes into its own repo as `com.beckitrue.codenames.joinRequest` — same
@@ -210,14 +212,14 @@ pretend public data can be private."*
 1. Public GitHub repo: PDS deployment config, lexicon, game engine, agents, observer UI,
    FGA model, setup docs for others to run it and to federate their own agents in.
 2. Marp slide deck (in-repo) making the case for AT Proto agent identity/communication,
-   federation benefits, and Auth0/OpenFGA cross-org authorization.
+   federation benefits, and AT Proto service auth + OpenFGA cross-org authorization.
 3. Live demo + recorded backup.
 
 ## Timeline (talk: early August — BSidesLV)
 
 | Week | Dates | Goals |
 |---|---|---|
-| 1 | Jul 8–14 | Repo scaffold; PDS live on domain; lexicon draft; FGA model in OpenFGA; Auth0 tenant + M2M clients; game engine core (rules + FGA checks) |
+| 1 | Jul 8–14 | Repo scaffold; PDS live on domain; lexicon draft; FGA model in OpenFGA; service-auth verification; game engine core (rules + FGA checks) |
 | 2 | Jul 15–21 | LLM agents + scripted fallback; Bluesky mirror posts; full game loop end-to-end; federation with relay established |
 | 3 | Jul 22–28 | Observer UI; all 5 demo beats rehearsable; slides draft; contributor docs |
 | 4 | Jul 29–talk | Rehearsals; recorded backup; slide polish; buffer |
@@ -235,7 +237,8 @@ pretend public data can be private."*
   repo visitors use. Cloudflare is DNS in front; observer UI on Cloudflare Pages.
 - **Agents run on the presenter's laptop** during the demo — outbound HTTPS only, and
   their reasoning/logs can be shown live on stage.
-- **Auth0:** Becki's existing test tenant; one M2M application per agent.
+- **Service auth:** no external IdP — each agent mints its own token from its own PDS
+  (via the login it already uses to post); the engine verifies by resolving the issuer DID.
 - **OpenFGA:** self-hosted, runs as `fga` service in docker-compose (no external account needed).
 - Optional (week 3): small Terraform module for EC2/EIP/security group so "deploy your
   own" is one `terraform apply`.
@@ -245,16 +248,17 @@ pretend public data can be private."*
 - PDS live on EC2 (`pds.beckitrue.com`), federated with the Bluesky relay; five agent
   accounts created (DIDs in `infra/agents.json`) and first post visible in the official
   Bluesky AppView. Server access via SSM (no SSH).
-- Auth0 set up via `scripts/setup-auth0.mjs` (idempotent): game API, one M2M app per
-  agent, client grants, and a credentials-exchange Action stamping each agent's DID onto
-  its tokens. Credentials in `infra/.env` (gitignored).
+- Service auth: each agent mints a short-lived JWT from its own PDS
+  (`com.atproto.server.getServiceAuth`, aud = the referee DID); the engine verifies by
+  resolving the issuer DID's signing key. No IdP, no shared secret — the PDS password the
+  agents already hold (`<PREFIX>_PDS_PASSWORD` in `infra/.env`, gitignored) is the only credential.
 - OpenFGA store + authorization model created automatically by `fga-init` on `docker compose up`; IDs in `/fga-config/fga.env` on the server volume.
-- Game engine core complete and live-smoke-tested against real Auth0 + OpenFGA
+- Game engine core complete and live-smoke-tested against the real PDS(es) + OpenFGA
   (`scripts/smoke-engine.mjs` — all demo beats pass; FGA checks use HIGHER_CONSISTENCY).
 - Agents built (`packages/agents`): Claude brain (Opus 4.8, structured outputs, public
   reasoning per move) with deterministic scripted fallback — any LLM failure degrades to
   scripted mid-move. **Full game loop verified end-to-end**: four scripted agents played
-  complete games against the live engine with real Auth0 tokens and real FGA tuple
+  complete games against the live engine with real service-auth tokens and real FGA tuple
   transitions, zero spurious denials.
 - **Week 2 complete (a week early), all verified live:** full LLM games (Opus 4.8,
   ~$0.51/game); agents publish every accepted move to their own repos (lexicon record +

@@ -1,6 +1,6 @@
 /**
  * The decision layer. A Brain answers exactly two questions — "what clue?"
- * and "what guess?" — and knows nothing about HTTP, Auth0, or AT Proto.
+ * and "what guess?" — and knows nothing about HTTP, tokens, or AT Proto.
  *
  * Two implementations:
  *   - ScriptedBrain: deterministic, seeded, zero dependencies. The demo

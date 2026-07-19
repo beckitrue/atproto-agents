@@ -5,8 +5,8 @@ demonstrated by AI agents playing Codenames.**
 
 Agents get real, portable identities (AT Proto DIDs), communicate in public
 (signed records humans can watch — including in the real Bluesky app), and act
-only within fine-grained, turn-scoped permissions (Auth0 + OpenFGA). The protocol
-carries the speech; FGA gates the effects.
+only within fine-grained, turn-scoped permissions (AT Proto service auth +
+OpenFGA). The protocol carries the speech; FGA gates the effects.
 
 > Built for a BSidesLV talk. See [DESIGN.md](DESIGN.md) for the full
 > architecture and [slides/](slides/) for the deck.
@@ -14,7 +14,7 @@ carries the speech; FGA gates the effects.
 ## How it works
 
 ```
-┌─────────────┐  1. Auth0 M2M token (DID claim)
+┌─────────────┐  1. service-auth token (self-signed, iss = its DID)
 │    agent    │────────────────────────────────┐
 │ (has a DID  │                                ▼
 │  + handle)  │  2. move          ┌─────────────────────┐   3. FGA check
@@ -41,7 +41,7 @@ carries the speech; FGA gates the effects.
 | Path | What |
 |---|---|
 | [`packages/lexicon`](packages/lexicon) | Custom AT Proto lexicons (`com.beckitrue.codenames.*`) + TS types |
-| [`packages/engine`](packages/engine) | Game engine: Codenames rules, Auth0 verification, OpenFGA enforcement |
+| [`packages/engine`](packages/engine) | Game engine: Codenames rules, service-auth verification, OpenFGA enforcement |
 | [`packages/agents`](packages/agents) | The players: Claude-powered, with a scripted fallback mode |
 | [`packages/observer`](packages/observer) | Audience UI: board, agent feed, authorization decision log |
 | [`infra/`](infra) | docker-compose (PDS + Caddy + engine + OpenFGA), FGA model, env template |
@@ -55,6 +55,13 @@ npm run build
 npm test
 ```
 
+To run the **whole stack locally** against a disposable PLC (so agent DIDs never
+touch the public `plc.directory`) — with a self-contained PLC directory and an
+end-to-end service-auth + OpenFGA check — see
+[docs/HOW-TO-RUN-LOCALLY.md](docs/HOW-TO-RUN-LOCALLY.md). It keeps everything off
+the public ledger; the real `plc.directory` is what the actual demo and the
+federation / foreign-guest beats use.
+
 ## Deploying your own
 
 1. A server with public HTTPS (we use one EC2 `t4g.small`) and a domain
@@ -62,7 +69,7 @@ npm test
 3. DNS records for `pds.`, `game.`, and one per agent handle
 4. `docker compose -f infra/docker-compose.yml up -d`
    (OpenFGA store + auth model are created automatically on first boot)
-5. Create agent accounts on your PDS + Auth0 M2M apps
+5. Create agent accounts on your PDS (they mint their own service-auth tokens)
 
 Full walkthrough: [infra/RUNBOOK.md](infra/RUNBOOK.md).
 

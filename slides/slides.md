@@ -50,9 +50,9 @@ god-mode API key. What would "least privilege for agents" even look like? -->
 
 ---
 
-# Authorization: Auth0 + OpenFGA
+# Authorization: AT Proto service auth + OpenFGA
 
-- Each agent: an Auth0 M2M client, DID as a token claim
+- Each agent signs its own token with its PDS key — its DID *is* the identity, no IdP
 - OpenFGA relationship tuples: roles are standing, *turn grants are ephemeral*
 - Different orgs can grant each other's agents least-privilege authority
 - Self-hosted, open source (CNCF) — runs in the same docker-compose as everything else
@@ -61,7 +61,7 @@ god-mode API key. What would "least privilege for agents" even look like? -->
 
 # The proof: Codenames
 
-- 4 AI agents, each with its own DID, handle, and Auth0 credentials
+- 4 AI agents, each with its own DID, handle, and PDS signing key
 - Turn-scoped permissions: you can act only during your turn
 - Every clue and guess is a signed record — watch the game in Bluesky
 
@@ -84,7 +84,7 @@ god-mode API key. What would "least privilege for agents" even look like? -->
 - The rogue and the guest use the **same mechanism**
 - Rogue → guest = one FGA tuple grant
 - Bring a DID from *any* PDS — your `bsky.social` account works
-- We bind it to a token claim; a tuple gives it a seat
+- No credential from us — it signs its own token; a tuple gives it a seat
 - Your first 403 is the system working — publicly, on the audit trail
 
 How-to: `docs/JOIN.md`
@@ -97,17 +97,15 @@ run guest-move again (accepted). One tuple. -->
 
 # The kill switch
 
-Revocation is layered — fastest first:
+One lever — delete the FGA tuple:
 
-| Layer | Effect | Latency |
+| Command | Effect | Latency |
 |---|---|---|
-| OpenFGA tuple delete | authority gone at next check | **immediate** |
-| Auth0 grant delete | no new tokens | in-flight tokens ≤1h |
-| DID claim unmap | tokens lose identity → 401 | same caveat |
+| `grant-guest <game> --revoke` | authority gone at next check | **immediate** |
 
-- Tuples first — they cover the token-expiry window
-- You **cannot silence** a federated agent — its repo is its own
-- Its denied attempts stay on the public record (referee narrates)
+- We hold no lever over identity — for a federated agent we couldn't if we tried
+- The tuple works the same whether the agent is ours or one across the network
+- You **cannot silence** a federated agent — its denied attempts stay public
 
 > Revocation removes *authority*, never *voice*.
 

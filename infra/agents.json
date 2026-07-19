@@ -1,7 +1,5 @@
 {
-  "$comment": "The agent roster: AT Proto identities (public) and their game roles. Auth0 client IDs are filled in by scripts/setup-auth0.mjs; secrets never live here.",
-  "gameApiAudience": "https://game.beckitrue.com",
-  "didClaim": "https://beckitrue.com/atproto_did",
+  "$comment": "The agent roster: AT Proto identities (public) and their game roles. Each agent authenticates by minting a service-auth token from its own PDS (aud = the referee DID below); secrets (PDS passwords) never live here.",
   "agents": [
     {
       "name": "red-spymaster",
@@ -37,13 +35,13 @@
       "did": "did:plc:dto65vuytpsqohl65b7ndc4r",
       "team": null,
       "role": "guest",
-      "$comment": "Demo beat 5 + live-grant stretch: Becki's PERSONAL identity, hosted on bsky.network — a genuinely foreign, federated PDS. Authenticated via Auth0, holds no FGA tuples until granted one on stage. Swap did/handle for a different guest, then re-run scripts/setup-auth0.mjs."
+      "$comment": "Demo beat 5 + live-grant stretch: Becki's PERSONAL identity, hosted on bsky.network — a genuinely foreign, federated PDS. Mints its own service-auth token (GUEST_AGENT_PDS_PASSWORD, an app password on that account); holds no FGA tuples until granted one on stage. Swap did/handle for a different guest — nothing else to provision."
     }
   ],
   "referee": {
     "name": "referee",
     "handle": "referee.beckitrue.com",
     "did": "did:plc:xgdzu5egqclsjtiwiv7rkf2k",
-    "$comment": "The engine's own AT Proto identity; publishes gameState records. Not an API caller, so no Auth0 client."
+    "$comment": "The engine's own AT Proto identity; publishes gameState records. Also the audience (aud) every agent mints its service-auth token for — set ENGINE_DID to this."
   }
 }
