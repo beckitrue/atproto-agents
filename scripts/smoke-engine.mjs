@@ -17,6 +17,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { deleteGameTuples, fgaToken, reportCleanup } from './fga-tuples.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const registry = JSON.parse(readFileSync(join(ROOT, 'infra/agents.json'), 'utf8'))
@@ -138,43 +139,11 @@ for (const e of events.body.events) {
 // ---- FGA cleanup: remove this run's tuples so the dashboard stays clean ----
 console.log('\ncleaning up FGA tuples…')
 try {
-  const issuer = process.env.FGA_API_TOKEN_ISSUER ?? 'auth.fga.dev'
-  const apiUrl = process.env.FGA_API_URL ?? 'https://api.us1.fga.dev'
-  const tokRes = await fetch(`https://${issuer}/oauth/token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'client_credentials',
-      client_id: process.env.FGA_CLIENT_ID,
-      client_secret: process.env.FGA_CLIENT_SECRET,
-      audience: process.env.FGA_API_AUDIENCE ?? 'https://api.us1.fga.dev/',
-    }),
-  })
-  const { access_token } = await tokRes.json()
-  const fgaUser = (did) => `agent:${did.replaceAll(':', '_')}`
-  const state = (await api('GET', `/games/${GAME}`, null)).body
-  const holders =
-    state.turn === 'red'
-      ? { clueGiver: roles.spymasterRed, guesser: roles.operativeRed }
-      : { clueGiver: roles.spymasterBlue, guesser: roles.operativeBlue }
-  const deletes = [
-    { user: fgaUser(roles.spymasterRed), relation: 'spymaster_red', object: `game:${GAME}` },
-    { user: fgaUser(roles.operativeRed), relation: 'operative_red', object: `game:${GAME}` },
-    { user: fgaUser(roles.spymasterBlue), relation: 'spymaster_blue', object: `game:${GAME}` },
-    { user: fgaUser(roles.operativeBlue), relation: 'operative_blue', object: `game:${GAME}` },
-    ...(state.phase !== 'finished'
-      ? [
-          { user: fgaUser(holders.clueGiver), relation: 'active_clue_giver', object: `game:${GAME}` },
-          { user: fgaUser(holders.guesser), relation: 'active_guesser', object: `game:${GAME}` },
-        ]
-      : []),
-  ]
-  const del = await fetch(`${apiUrl}/stores/${process.env.FGA_STORE_ID}/write`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${access_token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ deletes: { tuple_keys: deletes } }),
-  })
-  console.log(del.ok ? `  deleted ${deletes.length} tuples` : `  cleanup failed: ${del.status} ${await del.text()}`)
+  // Settle first: the engine wrote turn tuples milliseconds ago, and FGA is
+  // eventually consistent — deleting them immediately can fail claiming they
+  // don't exist. The helper reads what's really there and is idempotent.
+  const token = await fgaToken()
+  reportCleanup(GAME, await deleteGameTuples(token, GAME, { settleMs: 1500 }))
 } catch (err) {
   console.log(`  cleanup skipped: ${err.message}`)
 }
