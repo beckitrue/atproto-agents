@@ -14,6 +14,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { mintServiceAuth } from './lib/service-auth.mjs'
 
 const [name, gameId, action, word, count] = process.argv.slice(2)
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -27,19 +28,13 @@ if (!agent || !gameId || !['clue', 'guess', 'pass', 'key'].includes(action ?? ''
 
 const ENGINE = process.env.ENGINE_URL ?? 'https://game.beckitrue.com'
 const prefix = name.toUpperCase().replaceAll('-', '_')
-const tok = await (
-  await fetch(`https://${process.env.AUTH0_DOMAIN}/oauth/token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'client_credentials',
-      client_id: process.env[`${prefix}_AUTH0_CLIENT_ID`],
-      client_secret: process.env[`${prefix}_AUTH0_CLIENT_SECRET`],
-      audience: registry.gameApiAudience,
-    }),
-  })
-).json()
-const auth = { authorization: `Bearer ${tok.access_token}` }
+const token = await mintServiceAuth({
+  pds: process.env.PDS_URL ?? `https://pds.${process.env.DOMAIN ?? 'beckitrue.com'}`,
+  identifier: agent.handle,
+  password: process.env[`${prefix}_PDS_PASSWORD`],
+  audienceDid: registry.referee.did,
+})
+const auth = { authorization: `Bearer ${token}` }
 
 let res
 if (action === 'key') {

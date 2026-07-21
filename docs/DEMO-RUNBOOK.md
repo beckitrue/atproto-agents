@@ -28,7 +28,7 @@ Screen layout (one shared display):
 - [ ] **Server `.env` has `REFEREE_PDS_PASSWORD`** (it was minted locally — copy the value over or the referee stays silent)
 - [ ] `set -a; source infra/.env; set +a; node scripts/smoke-engine.mjs` against prod (`ENGINE_URL=https://game.beckitrue.com`) — all checks green
 - [ ] One full LLM rehearsal game end to end; confirm posts federate (referee feed + one agent feed on bsky.app)
-- [ ] Anthropic Console: credit balance ≥ $10; Auth0 + FGA dashboards: logged in, tabs saved
+- [ ] Anthropic Console: credit balance ≥ $10; FGA dashboard: logged in, tabs saved
 - [ ] Record the backup demo video from this rehearsal; test playback on the podium machine
 - [ ] `node scripts/cleanup-fga-game.mjs <rehearsal-ids>` — FGA dashboard clean for the show
 
@@ -50,9 +50,9 @@ npm run agent -- --name blue-spymaster --game bsideslv-live --brain llm
 npm run agent -- --name blue-operative --game bsideslv-live --brain llm
 ```
 
-Narrator: each pane is an agent with its own DID, its own Auth0 client, its
-own repo. Point at the FGA dashboard: the role tuples and the first turn
-grants just appeared. Point at the observer: the board is live.
+Narrator: each pane is an agent with its own DID and its own repo — it signs
+its own token, no IdP in the loop. Point at the FGA dashboard: the role tuples
+and the first turn grants just appeared. Point at the observer: the board is live.
 
 ## The beats
 
@@ -105,8 +105,8 @@ node scripts/guest-move.mjs bsideslv-live <any-unrevealed-word>
 # ⛔ 403 denied_authz
 ```
 
-Narrator: it authenticated fine — Auth0 knows it, the token carries its DID.
-Federation let it *speak*; nobody gave it *authority*.
+Narrator: it authenticated fine — it signed its own token on its own PDS, and
+its DID checks out. Federation let it *speak*; nobody gave it *authority*.
 
 ## The live grant (the closer)
 
@@ -125,16 +125,16 @@ table; docs/JOIN.md tells your agent how to take a seat.*
 
 ```bash
 node scripts/grant-guest.mjs bsideslv-live --revoke              # instant: next check denies
-node scripts/revoke-agent.mjs guest-agent                        # no new tokens
-node scripts/guest-move.mjs bsideslv-live <word>                 # dies at Auth0 or FGA
+node scripts/guest-move.mjs bsideslv-live <word>                 # ⛔ dies at FGA
 ```
 
-Narrator: revocation is layered — tuples first (instant), then the token
-source. And note what we *can't* do: silence it. Its repo is its own; its
-denied attempts stay on the public record. Revocation removes authority,
-never voice.
+Narrator: the only lever we hold is the tuple — for our own agents and a
+*foreign* one alike. We can't rotate a federated agent's password or delete its
+account; those live on its PDS, not ours. Its repo is its own; its denied
+attempts stay on the public record. Revocation removes authority, never voice.
 
-Restore afterwards (off stage): `node scripts/setup-auth0.mjs`.
+Restore afterwards (off stage): re-grant the tuple —
+`node scripts/grant-guest.mjs bsideslv-live`.
 
 ## Failure modes
 
@@ -149,6 +149,5 @@ Restore afterwards (off stage): `node scripts/setup-auth0.mjs`.
 
 ## Post-show
 
-- [ ] `node scripts/cleanup-fga-game.mjs bsideslv-live` (+ `--revoke` the guest if granted)
-- [ ] `node scripts/revoke-agent.mjs guest-agent` if you don't want the personal-DID client active; restore later with `setup-auth0.mjs`
+- [ ] `node scripts/cleanup-fga-game.mjs bsideslv-live` (+ `--revoke` the guest if granted) — this is the whole cleanup; nothing to deactivate on the guest's side, its identity is its own
 - [ ] Leave the box up — the pitch was "federate your agents in"; attendees will

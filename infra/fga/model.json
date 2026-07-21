@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.1",
+  "type_definitions": [
+    {
+      "type": "agent",
+      "relations": {},
+      "metadata": { "relations": {} }
+    },
+    {
+      "type": "game",
+      "relations": {
+        "spymaster_red":     { "this": {} },
+        "operative_red":     { "this": {} },
+        "spymaster_blue":    { "this": {} },
+        "operative_blue":    { "this": {} },
+        "active_clue_giver": { "this": {} },
+        "active_guesser":    { "this": {} },
+        "can_give_clue": { "computedUserset": { "relation": "active_clue_giver" } },
+        "can_guess":     { "computedUserset": { "relation": "active_guesser" } },
+        "can_view_key": {
+          "union": {
+            "child": [
+              { "computedUserset": { "relation": "spymaster_red" } },
+              { "computedUserset": { "relation": "spymaster_blue" } }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "spymaster_red":     { "directly_related_user_types": [{ "type": "agent" }] },
+          "operative_red":     { "directly_related_user_types": [{ "type": "agent" }] },
+          "spymaster_blue":    { "directly_related_user_types": [{ "type": "agent" }] },
+          "operative_blue":    { "directly_related_user_types": [{ "type": "agent" }] },
+          "active_clue_giver": { "directly_related_user_types": [{ "type": "agent" }] },
+          "active_guesser":    { "directly_related_user_types": [{ "type": "agent" }] },
+          "can_give_clue":     { "directly_related_user_types": [] },
+          "can_guess":         { "directly_related_user_types": [] },
+          "can_view_key":      { "directly_related_user_types": [] }
+        }
+      }
+    }
+  ]
+}

@@ -4,14 +4,14 @@
  * Usage:
  *   npm run agent -- --name red-spymaster --game demo-1 [--brain llm|scripted] [--poll ms]
  *
- * Env (see infra/.env): AUTH0_DOMAIN, AUTH0_AUDIENCE,
- * <PREFIX>_AUTH0_CLIENT_ID/SECRET per agent, GAME_ENGINE_URL,
- * ANTHROPIC_API_KEY (+ optional ANTHROPIC_MODEL) for --brain llm.
+ * Env (see infra/.env): <PREFIX>_PDS_PASSWORD per agent (the agent logs into
+ * its PDS to mint AT Proto service-auth tokens), GAME_ENGINE_URL, PDS_URL,
+ * optional ENGINE_DID (token audience), ANTHROPIC_API_KEY (+ optional
+ * ANTHROPIC_MODEL) for --brain llm.
  *
- * When <PREFIX>_PDS_PASSWORD is set (scripts/set-agent-pds-passwords.mjs),
- * every accepted move is also published to the agent's own PDS repo:
- * a custom lexicon record + a Bluesky mirror post with the reasoning.
- * Disable with --no-post.
+ * That same PDS login also publishes every accepted move to the agent's own
+ * repo: a custom lexicon record + a Bluesky mirror post with the reasoning.
+ * Disable posting with --no-post (authentication still uses the login).
  */
 import { GAME_ENGINE_URL, PDS_URL, ROSTER } from './config.js'
 import type { AgentConfig } from './config.js'
@@ -56,7 +56,7 @@ if (brainKind === 'llm') {
   process.exit(1)
 }
 
-const engine = new EngineClient(GAME_ENGINE_URL, tokenProviderFromEnv(agent.envPrefix))
+const engine = new EngineClient(GAME_ENGINE_URL, tokenProviderFromEnv(agent))
 
 const pdsPassword = process.env[`${agent.envPrefix}_PDS_PASSWORD`]
 const posting = Boolean(pdsPassword) && !process.argv.includes('--no-post')

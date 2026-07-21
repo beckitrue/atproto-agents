@@ -2,9 +2,12 @@
  * Game engine entry point.
  *
  * Env (see infra/.env.example):
- *   AUTH0_DOMAIN, AUTH0_AUDIENCE          — token verification
- *   FGA_STORE_ID, FGA_CLIENT_ID, FGA_CLIENT_SECRET (+ optional FGA_API_URL,
- *   FGA_MODEL_ID, FGA_API_TOKEN_ISSUER, FGA_API_AUDIENCE) — authorization
+ *   ENGINE_DID                            — this engine's DID; the audience
+ *     agents mint service-auth tokens for (defaults to the referee DID)
+ *   PLC_DIRECTORY_URL                     — optional; point at a local dev PLC
+ *     to keep verification off the public plc.directory
+ *   FGA_API_URL, FGA_STORE_ID, FGA_MODEL_ID — authorization (auto-populated
+ *   from /fga-config/fga.env by fga-init if not set explicitly)
  *   PORT (default 8080)
  */
 import Fastify from 'fastify'

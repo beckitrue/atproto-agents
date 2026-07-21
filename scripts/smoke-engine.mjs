@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * Live smoke test: the demo beats against the REAL Auth0 tenant and FGA store.
+ * Live smoke test: the demo beats against the REAL PDS(es) and FGA store.
  *
  * What it proves end to end:
- *   - Auth0 M2M tokens carry the DID custom claim (the Action works)
- *   - the engine verifies tokens and maps DID → FGA user
+ *   - each agent mints a service-auth token from its own PDS (iss = its DID)
+ *   - the engine verifies tokens via DID resolution and maps DID → FGA user
  *   - FGA allows/denies per the model, and turn transitions move real tuples
  *
- * Requires the engine running locally against the same env.
+ * Requires the engine running locally against the same env, plus each agent's
+ * <PREFIX>_PDS_PASSWORD (roster agents) and GUEST_AGENT_PDS_PASSWORD (guest).
  * Usage:
  *   set -a; source infra/.env; set +a
  *   ENGINE_URL=http://localhost:8091 node scripts/smoke-engine.mjs
@@ -18,6 +19,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { deleteGameTuples, fgaToken, reportCleanup } from './fga-tuples.mjs'
+import { mintServiceAuth } from './lib/service-auth.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const registry = JSON.parse(readFileSync(join(ROOT, 'infra/agents.json'), 'utf8'))
@@ -32,23 +34,18 @@ function check(label, ok, detail = '') {
 
 const agentByRole = (team, role) => registry.agents.find((a) => a.team === team && a.role === role)
 
-async function auth0Token(agentName) {
+async function serviceAuthToken(agentName) {
+  const agent = registry.agents.find((a) => a.name === agentName)
+  if (!agent) throw new Error(`unknown agent ${agentName}`)
   const prefix = agentName.toUpperCase().replaceAll('-', '_')
-  const clientId = process.env[`${prefix}_AUTH0_CLIENT_ID`]
-  const clientSecret = process.env[`${prefix}_AUTH0_CLIENT_SECRET`]
-  if (!clientId || !clientSecret) throw new Error(`missing Auth0 creds for ${agentName} in env`)
-  const res = await fetch(`https://${process.env.AUTH0_DOMAIN}/oauth/token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'client_credentials',
-      client_id: clientId,
-      client_secret: clientSecret,
-      audience: registry.gameApiAudience,
-    }),
-  })
-  if (!res.ok) throw new Error(`token for ${agentName}: ${res.status} ${await res.text()}`)
-  return (await res.json()).access_token
+  const password = process.env[`${prefix}_PDS_PASSWORD`]
+  if (!password) throw new Error(`missing ${prefix}_PDS_PASSWORD for ${agentName} in env`)
+  // The guest lives on a foreign PDS (bsky.network); roster agents on ours.
+  const pds =
+    agent.role === 'guest'
+      ? process.env.GUEST_PDS_URL ?? 'https://bsky.social'
+      : process.env.PDS_URL ?? `https://pds.${process.env.DOMAIN ?? 'beckitrue.com'}`
+  return mintServiceAuth({ pds, identifier: agent.handle, password, audienceDid: registry.referee.did })
 }
 
 async function api(method, path, token, body) {
@@ -63,19 +60,19 @@ async function api(method, path, token, body) {
   return { status: res.status, body: await res.json() }
 }
 
-// ---- get real tokens (also proves the DID-stamping Action fires) ----
-console.log('fetching Auth0 tokens (client credentials, real tenant)…')
+// ---- get real tokens (each agent signs its own, from its own PDS) ----
+console.log('minting service-auth tokens (each agent signs with its own repo key)…')
 const tokens = {}
 for (const name of ['red-spymaster', 'red-operative', 'blue-spymaster', 'blue-operative', 'guest-agent']) {
-  tokens[name] = await auth0Token(name)
+  tokens[name] = await serviceAuthToken(name)
 }
 console.log('  got 5 tokens')
 
-// quick claim sanity check without verifying (the engine does that part)
-const claim = JSON.parse(Buffer.from(tokens['red-spymaster'].split('.')[1], 'base64url').toString())[
-  registry.didClaim
-]
-check('red-spymaster token carries the DID claim', claim === agentByRole('red', 'spymaster').did, claim)
+// sanity check without verifying (the engine does that part): iss is the
+// agent's own DID, aud is the engine's DID.
+const claims = JSON.parse(Buffer.from(tokens['red-spymaster'].split('.')[1], 'base64url').toString())
+check('red-spymaster token iss is its own DID', claims.iss === agentByRole('red', 'spymaster').did, claims.iss)
+check('token aud is the engine DID', claims.aud === registry.referee.did, claims.aud)
 
 // ---- create the game ----
 const roles = {
@@ -110,16 +107,9 @@ console.log(`\nbeat 4 — ${first} spymaster (knows the key) tries to guess → 
 res = await api('POST', `/games/${GAME}/guess`, tokenFor(first, 'spymaster'), { word: 'ANCHOR' })
 check('denied_authz (separation of duties)', res.status === 403 && res.body.outcome === 'denied_authz')
 
-console.log(`\nbeat 5 — guest agent: authenticated by Auth0, holds nothing`)
+console.log(`\nbeat 5 — guest agent: authenticated by its own foreign PDS, holds nothing`)
 res = await api('POST', `/games/${GAME}/guess`, tokens['guest-agent'], { word: 'ANCHOR' })
-const guestHasDid = Boolean(agentByRole(null, 'guest')?.did)
-if (guestHasDid) {
-  check('denied_authz (voice, not authority)', res.status === 403 && res.body.outcome === 'denied_authz')
-} else {
-  // guest has no DID yet (foreign-PDS identity pending) → the Action stamps no
-  // claim and the engine refuses at authentication. Becomes 403 once it exists.
-  check('401 unauthenticated (no DID claim yet — expected until foreign identity exists)', res.status === 401, res.body.detail)
-}
+check('denied_authz (voice, not authority)', res.status === 403 && res.body.outcome === 'denied_authz')
 
 console.log(`\nturn transition — ${first} operative passes; authority moves to ${second} (real tuple writes)`)
 res = await api('POST', `/games/${GAME}/pass`, tokenFor(first, 'operative'))
@@ -136,7 +126,7 @@ for (const e of events.body.events) {
   console.log(`  ${e.at}  ${e.kind.padEnd(10)} ${e.outcome.padEnd(13)} ${e.actor}${e.detail ? `  (${e.detail})` : ''}`)
 }
 
-// ---- FGA cleanup: remove this run's tuples so the dashboard stays clean ----
+// ---- FGA cleanup: remove this run's tuples ----
 console.log('\ncleaning up FGA tuples…')
 try {
   // Settle first: the engine wrote turn tuples milliseconds ago, and FGA is
