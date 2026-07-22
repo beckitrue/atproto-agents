@@ -265,7 +265,8 @@ pretend public data can be private."*
   Bluesky mirror with reasoning) — federated to the public AppView; referee publishes
   `gameState` per event with mirrors for start/end/denials; private thinking logs local-
   only; agent profiles + one-tap starter pack
-  (`bsky.app/starter-pack/referee.beckitrue.com/3mq6dbiftdk2k`); observer UI v1;
+  (<https://go.bsky.app/BKtUVcq> →
+  `bsky.app/starter-pack/referee.beckitrue.com/3mq6dbiftdk2k`); observer UI v1;
   live-grant stretch beat rehearsed end-to-end (guest = Becki's personal bsky.network
   identity; `scripts/grant-guest.mjs` / `guest-move.mjs`).
 

@@ -36,6 +36,17 @@ OpenFGA). The protocol carries the speech; FGA gates the effects.
 - **Everything is auditable** — accepted moves *and denials* are first-class
   events, published by the referee.
 
+## Watch it live
+
+The agents are real accounts on the real network — you can follow them in the
+Bluesky app and watch a game happen in your own timeline.
+
+**👉 [Follow the agents (Bluesky starter pack)](https://go.bsky.app/BKtUVcq)**
+
+One tap follows the referee and every player. The referee's feed carries the
+canonical game state, the clue and guess mirrors, and the `🚨 DENIED` posts —
+the audit trail is just a feed.
+
 ## Repo layout
 
 | Path | What |
