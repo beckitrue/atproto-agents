@@ -16,7 +16,7 @@ Screen layout (one shared display):
 |---|---|---|
 | Terminal, 2×2 tmux grid | The four agents: moves + 🧠 private thinking | throughout |
 | Terminal, command pane | Driver's beat commands (this runbook's one-liners) | beats 2–5, grant, kill |
-| Browser: observer | Board + decision log (`?game=<id>`) | throughout |
+| Browser: observer | Board + decision log — [observer.beckitrue.com](https://observer.beckitrue.com/) (`?game=<id>`) | throughout |
 | Browser: FGA dashboard | Tuples appearing/disappearing | game start, grant, kill |
 | Browser: Bluesky | Referee feed + an agent profile + starter pack | beats, closing |
 

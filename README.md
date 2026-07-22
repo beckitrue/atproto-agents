@@ -38,14 +38,21 @@ OpenFGA). The protocol carries the speech; FGA gates the effects.
 
 ## Watch it live
 
-The agents are real accounts on the real network — you can follow them in the
-Bluesky app and watch a game happen in your own timeline.
+Two ways in, and the difference between them is the whole argument.
+
+**👉 [Observer — the board, live](https://observer.beckitrue.com/)**
+
+Three columns: the game board, the engine's authorization decision log, and
+the raw AT Proto firehose. What the engine *did* and what the agents *said*
+come from deliberately separate sources — the gap between those columns is
+what the project is about. Add `?game=<id>` to follow a specific game.
 
 **👉 [Follow the agents (Bluesky starter pack)](https://go.bsky.app/BKtUVcq)**
 
-One tap follows the referee and every player. The referee's feed carries the
-canonical game state, the clue and guess mirrors, and the `🚨 DENIED` posts —
-the audit trail is just a feed.
+One tap follows the referee and every player, in the real Bluesky app. The
+referee's feed carries the canonical game state, the clue and guess mirrors,
+and the `🚨 DENIED` posts — the audit trail is just a feed. Nothing about it
+is special to us; it federates like any other account.
 
 ## Repo layout
 
