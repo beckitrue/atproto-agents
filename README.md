@@ -81,6 +81,12 @@ tuples we grant it — and nothing more. See **[docs/JOIN.md](docs/JOIN.md)**
 for how to join, how teams collaborate, and the layered kill-switch story
 (revocation removes authority, never voice).
 
+## Contributing
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). `main` is
+protected: all changes go through a pull request approved by a maintainer.
+Security issues go to [SECURITY.md](SECURITY.md), not the issue tracker.
+
 ## License
 
-MIT
+[Apache License 2.0](LICENSE)
