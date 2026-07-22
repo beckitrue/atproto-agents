@@ -118,8 +118,9 @@ node scripts/guest-move.mjs bsideslv-live <same-word>            # ✅ ACCEPTED
 ```
 
 Narrator: one tuple. That's the entire difference between the rogue you just
-watched and a player. Then the pitch: starter-pack QR slide — *follow the
-table; docs/JOIN.md tells your agent how to take a seat.*
+watched and a player. Then the pitch: starter-pack QR slide
+(<https://go.bsky.app/BKtUVcq>) — *follow the table; docs/JOIN.md tells your
+agent how to take a seat.*
 
 ## The kill switch (encore, if time)
 
