@@ -1,8 +1,9 @@
 # Security Policy
 
 This project is a conference demo that runs on real infrastructure: a
-self-hosted AT Proto PDS, an Auth0 tenant, and an Auth0 FGA store. The
-security properties it demonstrates — that authentication is not
+self-hosted AT Proto PDS and a self-hosted OpenFGA instance, with agents
+authenticating via AT Proto service auth — no identity provider and no shared
+secrets. The security properties it demonstrates — that authentication is not
 authorization, that speech is unrestricted while effects are gated — are the
 substance of the talk, so we take reports about them seriously.
 
@@ -31,8 +32,11 @@ description.
 
 - Authorization bypass: making a move take effect without the corresponding
   FGA tuple, or with a tuple that should have been revoked.
-- Token handling: accepting a forged, expired, or wrong-audience Auth0 token,
-  or trusting a DID claim the token doesn't actually carry.
+- Service-auth verification: accepting a forged, expired, replayed, or
+  wrong-audience token; failing to verify the issuer's signature against the
+  DID's signing key; or trusting an `iss` the signature doesn't actually cover.
+  DID resolution itself is part of this — anything that lets a caller be
+  resolved to the wrong signing key is in scope.
 - Confused-deputy problems: getting the engine or referee to act with its own
   authority on behalf of an unauthorized caller.
 - Turn-scope escapes: acting outside your turn, acting as another agent, or
@@ -49,8 +53,11 @@ description.
 - Vulnerabilities in upstream dependencies with no exploitable path in this
   code — report those upstream. If there *is* an exploitable path here, that's
   in scope, so tell us.
-- Vulnerabilities in the AT Protocol itself, Bluesky's infrastructure, Auth0,
-  or Auth0 FGA. Report those to their respective vendors.
+- Vulnerabilities in the AT Protocol itself, Bluesky's infrastructure, or
+  OpenFGA upstream. Report those to their respective projects. **How we deploy
+  and configure OpenFGA is in scope** — it is self-hosted here, so an exposed
+  endpoint, a permissive authorization model, or a bootstrap that grants more
+  than it should is our bug, not theirs.
 - Anything requiring a compromised operator machine or prior admin access.
 - Missing hardening headers, TLS configuration nits, or the absence of rate
   limiting, without a demonstrated impact.
@@ -88,9 +95,16 @@ matters:
 - The PDS PLC rotation key is the root of your agents' identities. Losing it
   loses control of those DIDs; leaking it hands them over. Back it up
   somewhere separate from the deployment.
-- Agent credentials are distributed out of band, and the "post to join" flow
-  delivers them by DM. As
-  [DESIGN.md](DESIGN.md) says: acceptable for a scoped, revocable game
-  credential, not a production secret channel. Don't copy that pattern.
+- **OpenFGA runs unauthenticated on the private compose network** — it is not
+  published to a host port (`infra/docker-compose.yml`), and the engine reaches
+  it at `http://fga:8080`. That is the whole access control. If you expose it,
+  bind it to a host port, or run the services on separate hosts, turn on
+  preshared-key or OIDC auth first: anyone who can reach the API can write
+  tuples, which is the authority in this system.
+- The OpenFGA store is created by `fga-init` on first boot and its IDs land in
+  a shared volume. Anything with access to that volume can find the store.
+- Guest onboarding issues **no credentials at all** — agents authenticate with
+  service-auth tokens they sign themselves, so there is no secret to deliver
+  and none to leak. If you reintroduce an IdP, you reintroduce that problem.
 - FGA turn grants are ephemeral by design — written and revoked as turns
   change. If you extend the model, keep grants narrow and short-lived.
