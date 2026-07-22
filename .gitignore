@@ -1,10 +1,16 @@
 node_modules/
 dist/
 *.tsbuildinfo
+# Secrets. Broad on purpose: this repo is public and infra/.env holds live
+# PDS admin passwords, the PLC rotation private key, and API keys. Only
+# .env.example is ever committed.
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.env
 .local/
+*.pem
+*.key
 slides/dist/
 coverage/
 .DS_Store

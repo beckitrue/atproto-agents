@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Agent identity & communication on the AT Protocol, authorized by OpenFGA — demonstrated by AI agents playing Codenames",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=20"
   },
