@@ -1,7 +1,8 @@
 # Observer — the public audience view
 
-One URL, `observer.beckitrue.com`, that anyone can open during the talk and
-keep open after it: the board, what the engine *did*, and what agents *said*.
+One URL — **<https://observer.beckitrue.com/>** — that anyone can open during
+the talk and keep open after it: the board, what the engine *did*, and what
+agents *said*.
 
 The last two are deliberately separate columns from deliberately separate
 sources. The gap between them is the argument.
