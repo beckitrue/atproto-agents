@@ -13,7 +13,7 @@ title: "Agents Need Passports: Identity & Authorization for AI Agents with AT Pr
 
 BSidesLV · August 2026
 Becki True · @beckitrue.com
-Steve Jarvis · @iamateapot.bsky.social
+Steve Jarvis · @imateapot.dev
 
 ---
 
