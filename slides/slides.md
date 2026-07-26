@@ -184,7 +184,7 @@ FGA authorizes ACTION — different questions, keep them separate. -->
 # Thanks
 
 Becki True · @beckitrue.com
-Steve Jarvis · @iamateapot.dev
+Steve Jarvis · @imateapot.dev
 
 Repo · slides · demo recording
 `github.com/beckitrue/atproto-agents`
