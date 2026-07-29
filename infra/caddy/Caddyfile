@@ -30,6 +30,14 @@ observer.{$DOMAIN} {
 	}
 	handle {
 		root * /srv/observer
+		# Content-hashed assets (index-<hash>.js/.css) can cache forever; a new
+		# build changes the filename. index.html must NOT cache, or browsers keep
+		# loading the old bundle after a redeploy (the projector goes stale on
+		# stage). Everything that isn't a hashed asset revalidates every load.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		@notassets not path /assets/*
+		header @notassets Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
