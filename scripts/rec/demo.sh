@@ -13,13 +13,26 @@
 #   scripts/rec/demo.sh run '<cmd>'   # run a beat in that terminal, e.g.
 #                                     #   run 'node scripts/rogue-move.mjs blue-spymaster demo-rec-1 clue X 2'
 #   scripts/rec/demo.sh rec-start     # start recording HDMI-1 → ~/Notes/demo-take-N.mp4
+#   scripts/rec/demo.sh arm           # WAIT for Becki to switch to the demo workspace,
+#                                     #   settle, THEN start recording (see below)
 #   scripts/rec/demo.sh rec-stop      # stop recording (clean MP4 finalize)
+#   scripts/rec/demo.sh on-demo-desktop  # exit 0 iff the demo workspace is foreground
 #   scripts/rec/demo.sh status        # what's running + which take
 #   scripts/rec/demo.sh clean         # tear down FIFO + terminal
+#
+# 'arm' exists because Becki drives me from a DIFFERENT workspace and loses all
+# visibility of this session the moment she switches to the one being recorded.
+# So the recorder waits for her, not the reverse: arm polls _NET_CURRENT_DESKTOP
+# until the workspace holding the "AT Proto demo" terminal is foreground, waits
+# REC_SETTLE seconds so the switch animation is off-camera, then starts ffmpeg.
+# Corollary abort signal: switching AWAY from that workspace mid-take means "cut"
+# — the take driver polls 'on-demo-desktop' and stops recording when it fails.
 #
 # Env overrides (defaults target HDMI-1 primary 3840x2160+0+0 on DISPLAY :1):
 #   REC_DISPLAY=:1  REC_SIZE=3840x2160  REC_OFFSET=0,0  REC_FPS=30
 #   REC_OUT=~/Notes/demo-take-3.mp4     # force an output path instead of auto-take-N
+#   REC_DESKTOP=2                       # force the workspace index (else auto-detected)
+#   REC_SETTLE=3  REC_ARM_TIMEOUT=300   # arm: post-switch settle / max wait, seconds
 #   DEMO_FIFO=/tmp/demo.fifo            # FIFO path
 set -euo pipefail
 
@@ -33,8 +46,33 @@ REC_DISPLAY="${REC_DISPLAY:-${DISPLAY:-:1}}"
 REC_SIZE="${REC_SIZE:-3840x2160}"
 REC_OFFSET="${REC_OFFSET:-0,0}"
 REC_FPS="${REC_FPS:-30}"
+REC_SETTLE="${REC_SETTLE:-3}"
+REC_ARM_TIMEOUT="${REC_ARM_TIMEOUT:-300}"
+DEMO_WIN_TITLE="AT Proto demo"
 
 die() { echo "✗ $*" >&2; exit 1; }
+
+# ── workspace helpers ────────────────────────────────────────────────────────
+# The demo workspace is wherever the on-screen terminal lives — auto-detected so
+# this keeps working if the window gets moved between sessions.
+demo_desktop() {
+  [ -n "${REC_DESKTOP:-}" ] && { echo "$REC_DESKTOP"; return; }
+  local id
+  id="$(DISPLAY="$REC_DISPLAY" xdotool search --name "^${DEMO_WIN_TITLE}$" 2>/dev/null | head -1)"
+  [ -n "$id" ] || return 1
+  DISPLAY="$REC_DISPLAY" xprop -id "$id" _NET_WM_DESKTOP 2>/dev/null | grep -o '[0-9]*$'
+}
+
+current_desktop() {
+  DISPLAY="$REC_DISPLAY" xprop -root _NET_CURRENT_DESKTOP 2>/dev/null | grep -o '[0-9]*$'
+}
+
+cmd_on_demo_desktop() {
+  local want cur
+  want="$(demo_desktop)" || die "can't find the '$DEMO_WIN_TITLE' window — run 'demo.sh term' first"
+  cur="$(current_desktop)"
+  [ -n "$want" ] && [ "$want" = "$cur" ]
+}
 
 # ── term: launch the visible FIFO-driven terminal ────────────────────────────
 cmd_term() {
@@ -95,6 +133,27 @@ cmd_rec_start() {
   echo "● recording ${REC_SIZE} @${REC_FPS} of ${REC_DISPLAY}+${REC_OFFSET} → $out (pid $(cat "$PIDFILE"))"
 }
 
+# ── arm: wait for the demo workspace, settle, then record ────────────────────
+cmd_arm() {
+  local want cur waited=0
+  want="$(demo_desktop)" || die "can't find the '$DEMO_WIN_TITLE' window — run 'demo.sh term' first"
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    die "already recording (pid $(cat "$PIDFILE"))"
+  fi
+  echo "⏳ armed — waiting for workspace ${want} (the demo workspace) to come to the front."
+  echo "   Switch to it now; recording starts ${REC_SETTLE}s after you land. Ctrl-C here to cancel."
+  while :; do
+    cur="$(current_desktop)"
+    [ "$cur" = "$want" ] && break
+    waited=$((waited + 1))
+    [ "$waited" -ge "$((REC_ARM_TIMEOUT * 2))" ] && die "timed out after ${REC_ARM_TIMEOUT}s waiting for workspace ${want} — nothing recorded"
+    sleep 0.5
+  done
+  echo "✓ workspace ${want} is foreground — settling ${REC_SETTLE}s…"
+  sleep "$REC_SETTLE"
+  cmd_rec_start
+}
+
 # ── rec-stop: clean finalize ─────────────────────────────────────────────────
 cmd_rec_stop() {
   [ -f "$PIDFILE" ] || die "not recording"
@@ -117,6 +176,17 @@ cmd_status() {
     echo "recording: ● pid $(cat "$PIDFILE") → $(cat "$OUTFILE" 2>/dev/null)"
   else
     echo "recording: (idle)"
+  fi
+  local want cur
+  if want="$(demo_desktop)"; then
+    cur="$(current_desktop)"
+    if [ "$want" = "$cur" ]; then
+      echo "workspace: demo workspace ${want} is FOREGROUND (on camera)"
+    else
+      echo "workspace: demo=${want}, foreground=${cur} (demo workspace not on screen)"
+    fi
+  else
+    echo "workspace: (demo terminal window not found)"
   fi
   echo "next auto take: $(next_take)"
 }
@@ -141,8 +211,10 @@ case "${1:-}" in
   term)      cmd_term ;;
   run)       shift; cmd_run "$@" ;;
   rec-start) cmd_rec_start ;;
+  arm)       cmd_arm ;;
   rec-stop)  cmd_rec_stop ;;
+  on-demo-desktop) cmd_on_demo_desktop ;;
   status)    cmd_status ;;
   clean)     cmd_clean ;;
-  *) echo "usage: $0 {term|run '<cmd>'|rec-start|rec-stop|status|clean}" >&2; exit 1 ;;
+  *) echo "usage: $0 {term|run '<cmd>'|rec-start|arm|rec-stop|on-demo-desktop|status|clean}" >&2; exit 1 ;;
 esac
