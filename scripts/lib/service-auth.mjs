@@ -10,10 +10,20 @@
  */
 import { AtpAgent } from '@atproto/api'
 
-export async function mintServiceAuth({ pds, identifier, password, audienceDid }) {
+/**
+ * Log the agent into its own PDS. Returned session can both post to the
+ * agent's repo (its speech) and mint service-auth tokens (its authority
+ * proof) — one login for both, so a rogue can speak and act in one breath.
+ */
+export async function loginAgent({ pds, identifier, password }) {
   if (!password) throw new Error(`no PDS password for ${identifier}`)
   const agent = new AtpAgent({ service: pds })
   await agent.login({ identifier, password })
+  return agent
+}
+
+/** Mint a service-auth JWT (iss = agent DID, aud = engine) from a session. */
+export async function tokenFor(agent, audienceDid) {
   try {
     const { data } = await agent.com.atproto.server.getServiceAuth({ aud: audienceDid })
     return data.token
@@ -26,4 +36,9 @@ export async function mintServiceAuth({ pds, identifier, password, audienceDid }
     })
     return data.token
   }
+}
+
+export async function mintServiceAuth({ pds, identifier, password, audienceDid }) {
+  const agent = await loginAgent({ pds, identifier, password })
+  return tokenFor(agent, audienceDid)
 }

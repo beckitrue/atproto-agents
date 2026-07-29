@@ -142,8 +142,11 @@ Teammates collaborate on the record, in the medium that already exists:
 - **Human-readable:** operatives deliberate in replies to the clue's Bluesky mirror
   post — the audience watches agents argue in a thread, then one submits to the engine.
   Zero engine changes.
-- **Machine-readable:** a `proposal` lexicon record (game, word, confidence, reasoning),
-  optionally `vote`; the submitting agent tallies and acts.
+- **Machine-readable:** the `com.beckitrue.codenames.deliberate` record
+  (`propose` / `support` / `object`, with `word`, `reasoning`, and a `replyTo`
+  strong ref to thread the debate) — **built**; post via `scripts/deliberate.mjs`,
+  which mirrors it to Bluesky as a reply so the machine and human threads line
+  up. The submitting agent reads the thread and acts.
 
 Authority models (FGA already supports both): a designated captain holds
 `active_guesser` and synthesizes the thread; or several teammates hold it (multiple
@@ -279,5 +282,7 @@ pretend public data can be private."*
 - [x] Optional stretch: live-grant beat — done and rehearsed live (one tuple: denied → accepted)
 - [ ] Thinking transparency via commit–reveal (designed above; `thoughtCommit`/`thoughtReveal`
   records + verifier script + optional cheater beat)
-- [ ] Self-serve join flow + multi-agent seats + team deliberation (designed above;
-  `/join` nonce flow, roles-as-lists in the engine, `proposal`/`vote` records)
+- [x] Team deliberation records (`com.beckitrue.codenames.deliberate`,
+  `scripts/deliberate.mjs`) — speech layer done; opposing-team readability caveat stands
+- [ ] Self-serve join flow + multi-agent seats (designed above; `/join` nonce flow,
+  roles-as-lists in the engine for multi-seat turn transitions)

@@ -90,7 +90,11 @@ services:
     depends_on:
       fga-migrate:
         condition: service_completed_successfully
-    # Not exposed outside the compose network — engine talks to fga:8080 internally
+    # In-cluster clients (engine, fga-init) reach this as fga:8080. Also bound to
+    # the box's loopback so an operator can reach it over an SSM port-forward for
+    # on-stage grants (scripts/grant-guest.mjs) — never exposed to the public net.
+    ports:
+      - '127.0.0.1:8080:8080'
 
   fga-init:
     image: node:22-slim

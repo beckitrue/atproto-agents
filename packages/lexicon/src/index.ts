@@ -14,6 +14,7 @@ export const ids = {
   clue: 'com.beckitrue.codenames.clue',
   guess: 'com.beckitrue.codenames.guess',
   pass: 'com.beckitrue.codenames.pass',
+  deliberate: 'com.beckitrue.codenames.deliberate',
   gameState: 'com.beckitrue.codenames.gameState',
 } as const
 
@@ -44,6 +45,27 @@ export interface PassRecord {
   $type?: typeof ids.pass
   game: string
   team: Team
+  createdAt: string
+}
+
+/** com.beckitrue.codenames.deliberate#postRef — a strong ref (AT-URI + CID) */
+export interface PostRef {
+  uri: string
+  cid: string
+}
+
+/** com.beckitrue.codenames.deliberate — team argues; only the seat-holder can act */
+export interface DeliberateRecord {
+  $type?: typeof ids.deliberate
+  game: string
+  team: Team
+  /** propose a word to guess, support the standing proposal, or object to it */
+  stance: 'propose' | 'support' | 'object'
+  /** The board word being argued for or against (omit for a general note) */
+  word?: string
+  reasoning?: string
+  /** The teammate post/record this replies to, threading the debate */
+  replyTo?: PostRef
   createdAt: string
 }
 

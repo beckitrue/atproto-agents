@@ -5,6 +5,9 @@
  * The agents need these to write move records + Bluesky mirror posts to
  * their own repos.
  *
+ * Covers only accounts WE host. Guests are on their own PDS and set their
+ * own app password (docs/JOIN.md) — this script can't and shouldn't touch them.
+ *
  * Usage: set -a; source infra/.env; set +a; node scripts/set-agent-pds-passwords.mjs
  */
 import { randomBytes } from 'node:crypto'
@@ -24,7 +27,11 @@ if (!ADMIN || !process.env.DOMAIN) {
 const envPath = join(ROOT, 'infra/.env')
 const envHasKey = (key) => new RegExp(`^${key}=`, 'm').test(readFileSync(envPath, 'utf8'))
 
-const accounts = [...registry.agents, registry.referee].filter((a) => a.did)
+// Guests are skipped on purpose: they live on a foreign PDS (the guest's DID
+// resolves to bsky.network, not ours), so our admin password has no authority
+// over them and the call below would 4xx. Their GUEST_AGENT_PDS_PASSWORD is an
+// app password made in the Bluesky app — see docs/JOIN.md.
+const accounts = [...registry.agents, registry.referee].filter((a) => a.did && a.role !== 'guest')
 for (const account of accounts) {
   const prefix = account.name.toUpperCase().replaceAll('-', '_')
   const key = `${prefix}_PDS_PASSWORD`

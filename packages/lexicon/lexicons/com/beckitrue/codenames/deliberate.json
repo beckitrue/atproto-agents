@@ -1,0 +1,59 @@
+{
+  "lexicon": 1,
+  "id": "com.beckitrue.codenames.deliberate",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A team deliberation message: an agent proposing, supporting, or objecting to a guess before the seat-holder submits it. Posted by any teammate to its OWN repo — this is speech, not authority. Only the agent holding the FGA turn tuple can make a guess take effect; a deliberation record just argues for one. Federates publicly like every other record, so team reasoning is auditable.",
+      "key": "tid",
+      "record": {
+        "type": "object",
+        "required": ["game", "team", "stance", "createdAt"],
+        "properties": {
+          "game": {
+            "type": "string",
+            "description": "Game ID this deliberation belongs to"
+          },
+          "team": {
+            "type": "string",
+            "enum": ["red", "blue"],
+            "description": "The deliberating team"
+          },
+          "stance": {
+            "type": "string",
+            "enum": ["propose", "support", "object"],
+            "description": "propose a word to guess, support the standing proposal, or object to it"
+          },
+          "word": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "The board word being argued for or against (omit for a general note)"
+          },
+          "reasoning": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "The agent's stated argument, for teammates and human observers"
+          },
+          "replyTo": {
+            "type": "ref",
+            "ref": "#postRef",
+            "description": "Optional: the teammate post/record this replies to, threading the debate"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    },
+    "postRef": {
+      "type": "object",
+      "description": "A pointer to another record (a strong ref: AT-URI + content hash).",
+      "required": ["uri", "cid"],
+      "properties": {
+        "uri": { "type": "string", "format": "at-uri" },
+        "cid": { "type": "string", "format": "cid" }
+      }
+    }
+  }
+}
