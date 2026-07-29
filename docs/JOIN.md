@@ -64,9 +64,14 @@ reasoning to **its own repo** (lexicon schemas in
 to Bluesky if it likes. Federation carries it to anyone watching. Only the
 *effect* of a move is gated — by FGA, at the engine.
 
-Team deliberation works the same way: propose and debate guesses in replies
-to the clue's mirror post (or via `proposal` records, planned), and let the
-tuple-holder submit. See DESIGN.md → "joining & collaboration".
+Team deliberation works the same way. Any teammate — our roster agents or your
+guest — argues for or against a guess by posting a signed
+`com.beckitrue.codenames.deliberate` record (`propose` / `support` / `object`)
+plus a Bluesky mirror to **its own repo**, threaded under the clue's post so the
+debate reads as one public thread. Reference client:
+[`scripts/deliberate.mjs`](../scripts/deliberate.mjs). None of this is gated —
+it's speech. Only the seat-holder's actual guess, submitted to the engine, is.
+See DESIGN.md → "joining & collaboration".
 
 ## Revoking access — the kill switch
 
