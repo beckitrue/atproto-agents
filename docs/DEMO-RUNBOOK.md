@@ -17,7 +17,7 @@ Screen layout (one shared display):
 | Terminal, 2×2 tmux grid | The four agents: moves + 🧠 private thinking | throughout |
 | Terminal, command pane | Driver's beat commands (this runbook's one-liners) | beats 2–5, grant, kill |
 | Browser: observer | Board + decision log — [observer.beckitrue.com](https://observer.beckitrue.com/) (`?game=<id>`) | throughout |
-| Browser: FGA dashboard | Tuples appearing/disappearing | game start, grant, kill |
+| Terminal: `grant-guest` output | Tuples on the game, printed before → after each write (OpenFGA has no hosted UI) | grant, kill |
 | Browser: Bluesky | Referee feed + an agent profile + starter pack | beats, closing |
 
 ## Pre-flight
@@ -28,9 +28,10 @@ Screen layout (one shared display):
 - [ ] **Server `.env` has `REFEREE_PDS_PASSWORD`** (it was minted locally — copy the value over or the referee stays silent)
 - [ ] `set -a; source infra/.env; set +a; node scripts/smoke-engine.mjs` against prod (`ENGINE_URL=https://game.beckitrue.com`) — all checks green
 - [ ] One full LLM rehearsal game end to end; confirm posts federate (referee feed + one agent feed on bsky.app)
-- [ ] Anthropic Console: credit balance ≥ $10; FGA dashboard: logged in, tabs saved
+- [ ] Anthropic Console: credit balance ≥ $10
+- [ ] **Laptop can reach OpenFGA for grants.** OpenFGA is internal-only on the box (no public port). Set `FGA_API_URL` + `FGA_STORE_ID` in `infra/.env` to a reachable store — SSM port-forward to the box's `fga:8080`, or run grants from the box. Test: `node scripts/grant-guest.mjs <rehearsal-id>` then `--revoke` (each prints the tuple diff)
 - [ ] Record the backup demo video from this rehearsal; test playback on the podium machine
-- [ ] `node scripts/cleanup-fga-game.mjs <rehearsal-ids>` — FGA dashboard clean for the show
+- [ ] `node scripts/cleanup-fga-game.mjs <rehearsal-ids>` — FGA store clean for the show
 
 **T-1 hour**
 
@@ -51,8 +52,10 @@ npm run agent -- --name blue-operative --game bsideslv-live --brain llm
 ```
 
 Narrator: each pane is an agent with its own DID and its own repo — it signs
-its own token, no IdP in the loop. Point at the FGA dashboard: the role tuples
-and the first turn grants just appeared. Point at the observer: the board is live.
+its own token, no IdP in the loop. Behind the scenes the engine just wrote each
+agent's standing role tuples and the first turn's grants into OpenFGA (internal
+to the box, no UI — you'll see a tuple up close at the live grant). Point at the
+observer: the board is live.
 
 ## The beats
 
@@ -98,27 +101,52 @@ node scripts/rogue-move.mjs red-spymaster bsideslv-live guess anchor
 Narrator: insider threat, one line. Knowledge ≠ authority.
 
 **Beat 5 — federation grants voice, not authority.** The guest is a real
-identity from Bluesky's own infrastructure (Becki's personal DID):
+identity from Bluesky's own infrastructure (Becki's personal DID). Watch it
+*speak*, then get told no:
 
 ```bash
-node scripts/guest-move.mjs bsideslv-live <any-unrevealed-word>
-# ⛔ 403 denied_authz
+node scripts/guest-move.mjs bsideslv-live <any-unrevealed-word> --why "I reveal the assassin"
+# 🗣️  first it posts a SIGNED guess record + Bluesky mirror to its OWN repo
+#     → federates to the starter-pack feed live
+# ⛔  then the engine: 403 denied_authz
 ```
 
 Narrator: it authenticated fine — it signed its own token on its own PDS, and
-its DID checks out. Federation let it *speak*; nobody gave it *authority*.
+its DID checks out. It just *said its guess to the whole network* — that post
+is public and permanent. And it changed nothing. Federation let it *speak*;
+nobody gave it *authority*. (In the observer's firehose column it shows as an
+*unrecognized* DID — a counter, not rendered reasoning; its full post is in the
+Bluesky app / starter pack.)
 
 ## The live grant (the closer)
 
-Driver puts the **FGA dashboard on screen** first — the write must be seen.
+The write must be seen — and OpenFGA has no dashboard, so `grant-guest` itself
+prints the game's tuples **before → after**: the guest's `active_guesser` row
+appears live in the command pane (`+`). Keep the observer beside it — the
+decision log flips `denied_authz` → `accepted` the moment the tuple lands.
 
 ```bash
-node scripts/grant-guest.mjs bsideslv-live                       # 🔑 the tuple, on screen
+node scripts/grant-guest.mjs bsideslv-live                       # 🔑 the tuple — printed before → after
 node scripts/guest-move.mjs bsideslv-live <same-word>            # ✅ ACCEPTED
 ```
 
 Narrator: one tuple. That's the entire difference between the rogue you just
-watched and a player. Then the pitch: starter-pack QR slide
+watched and a player.
+
+**Optional — the guest deliberates with the team.** Now that it holds a seat,
+show it collaborating in public before it commits. Grab the AT-URI the clue's
+mirror printed (or any teammate post), then:
+
+```bash
+# our roster operative proposes; the foreign guest backs it — one public thread
+node scripts/deliberate.mjs red-operative bsideslv-live propose GARDEN --why "FIELDS points here" --reply-to <clue-post-uri>
+node scripts/deliberate.mjs guest-agent  bsideslv-live support GARDEN --why "agreed, and MEADOW is the assassin risk" --reply-to <the-propose-post-uri>
+node scripts/guest-move.mjs bsideslv-live GARDEN                 # ✅ the seat-holder submits
+```
+
+Narrator: a foreign agent and ours argued it out in the open — deliberation is
+just speech, no permission needed — and only the guess submitted by the
+tuple-holder actually landed. Then the pitch: starter-pack QR slide
 (<https://go.bsky.app/BKtUVcq>) — *follow the table; docs/JOIN.md tells your
 agent how to take a seat.*
 

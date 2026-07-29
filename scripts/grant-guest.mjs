@@ -7,6 +7,9 @@
  * The engine's turn transitions only touch roster holders, so a guest
  * grant persists across turns until you revoke it.
  *
+ * Prints the game's FGA tuples before → after the write (+ added, - removed),
+ * so the authority change is visible on stage — OpenFGA has no hosted UI.
+ *
  * Usage: set -a; source infra/.env; set +a
  *        node scripts/grant-guest.mjs <gameId>              # the registry guest
  *        node scripts/grant-guest.mjs <gameId> --did <did>  # any approved guest
@@ -35,19 +38,65 @@ if (!guest?.did?.startsWith('did:')) {
   process.exit(1)
 }
 
+const FGA = process.env.FGA_API_URL ?? 'http://localhost:8080'
+const STORE = process.env.FGA_STORE_ID
+
 const tuple = {
   user: `agent:${guest.did.replaceAll(':', '_')}`,
   relation: 'active_guesser',
   object: `game:${gameId}`,
 }
-const res = await fetch(
-  `${process.env.FGA_API_URL ?? 'http://localhost:8080'}/stores/${process.env.FGA_STORE_ID}/write`,
-  {
+
+/** All FGA tuples on this game — the authority layer, laid bare for the stage. */
+async function readGameTuples() {
+  const res = await fetch(`${FGA}/stores/${STORE}/read`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tuple_key: { object: `game:${gameId}` } }),
+  })
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`)
+  const { tuples } = await res.json()
+  return (tuples ?? []).map((t) => t.key)
+}
+
+/** Print the tuple set as a before → after diff: + added, - removed. */
+function printDiff(before, after) {
+  const key = (k) => `${k.relation}  ${k.user}`
+  const b = new Set(before.map(key))
+  const a = new Set(after.map(key))
+  const rows = [...new Set([...b, ...a])].sort()
+  console.log(`\ntuples on game:${gameId}  (before → after):`)
+  if (rows.length === 0) {
+    console.log('   (none)')
+    return
+  }
+  for (const row of rows) {
+    const mark = b.has(row) && a.has(row) ? '   ' : a.has(row) ? ' + ' : ' - '
+    console.log(`${mark}${row}`)
+  }
+}
+
+// Read the game's tuples before the write — non-fatal if FGA can't be reached
+// for a read (the write below will surface a real connectivity problem).
+let before = []
+try {
+  before = await readGameTuples()
+} catch (err) {
+  console.error(`(couldn't read tuples before the write: ${err.message})`)
+}
+
+let res
+try {
+  res = await fetch(`${FGA}/stores/${STORE}/write`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(revoke ? { deletes: { tuple_keys: [tuple] } } : { writes: { tuple_keys: [tuple] } }),
-  },
-)
+  })
+} catch (err) {
+  console.error(`FGA unreachable at ${FGA}: ${err.message}`)
+  console.error(`(OpenFGA is internal-only on the box — set FGA_API_URL/FGA_STORE_ID to a reachable store; see docs/DEMO-RUNBOOK.md pre-flight)`)
+  process.exit(1)
+}
 if (!res.ok) {
   console.error(`FGA write failed: ${res.status} ${await res.text()}`)
   process.exit(1)
@@ -57,3 +106,9 @@ console.log(
     ? `🔒 REVOKED: ${guest.handle} no longer holds active_guesser on game:${gameId}`
     : `🔑 GRANTED: ${guest.handle} (${guest.did}) now holds active_guesser on game:${gameId}`,
 )
+
+try {
+  printDiff(before, await readGameTuples())
+} catch (err) {
+  console.error(`(couldn't read tuples after the write: ${err.message})`)
+}

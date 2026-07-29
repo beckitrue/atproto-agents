@@ -277,6 +277,42 @@ If profiles don't appear within ~15 minutes, check
 **Before the talk:** take an EBS snapshot once the agents + federation are
 verified, so any later mishap can be rolled back to a known-good demo state.
 
+### 6.1 On-stage grants — reaching prod OpenFGA from the laptop
+
+`grant-guest.mjs` (and `cleanup-fga-game.mjs`) write to OpenFGA **directly**,
+not through the engine — so the laptop needs a route to the store. OpenFGA is
+bound to the box's loopback (`127.0.0.1:8080`, set in `docker-compose.yml`) and
+never exposed to the internet; reach it over an SSM port-forward.
+
+**One-time on the box** — pull the compose change that publishes the loopback
+port, and read the store id fga-init wrote:
+
+```bash
+aws ssm start-session --target "$INSTANCE_ID"
+sudo su - ubuntu && cd atproto-agents/infra
+git pull && docker compose up -d fga          # picks up the 127.0.0.1:8080 binding
+docker compose run --rm --entrypoint cat fga-init /fga-config/fga.env   # → FGA_STORE_ID=...
+```
+
+**Each demo session on the laptop** — open the tunnel, then point the scripts at it:
+
+```bash
+# terminal A: keep this running (local 8080 → box 127.0.0.1:8080)
+aws ssm start-session --target "$INSTANCE_ID" \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["8080"],"localPortNumber":["8080"]}'
+
+# terminal B (where you drive the demo): in infra/.env
+#   FGA_API_URL=http://localhost:8080
+#   FGA_STORE_ID=<the id from fga.env above>
+set -a; source infra/.env; set +a
+node scripts/grant-guest.mjs <game>            # 🔑 + active_guesser, printed before → after
+```
+
+The tuple write lands in the same store the prod engine reads, so the observer's
+decision log flips `denied_authz` → `accepted` immediately. Revoke/kill-switch
+(`--revoke`) travels the identical path.
+
 ## 7. Teardown (after the conference, if desired)
 
 ```bash
