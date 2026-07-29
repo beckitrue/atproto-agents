@@ -83,9 +83,12 @@ const session = await loginAgent({
 
 // 1. SPEAK — no permission required, federates regardless of the verdict below.
 if (speak) {
-  const mirror = await speakGuess(session, { game: gameId, team, word, reasoning: why })
+  const { uri, text } = await speakGuess(session, { game: gameId, team, word, reasoning: why })
   console.log(`🗣️  ${guest.handle} spoke on its OWN repo (federates now):`)
-  console.log(mirror.split('\n').map((l) => `      ${l}`).join('\n'))
+  console.log(text.split('\n').map((l) => `      ${l}`).join('\n'))
+  // The signed guess record's AT-URI — verify it independently of our engine:
+  console.log(`   ↳ record: ${uri}`)
+  console.log(`   ↳ verify: node scripts/verify-record.mjs ${uri}`)
 }
 
 // 2. ACT — the engine decides, based entirely on FGA tuples.

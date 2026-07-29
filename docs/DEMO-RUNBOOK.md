@@ -44,11 +44,12 @@ Screen layout (one shared display):
 
 ```bash
 node scripts/new-game.mjs bsideslv-live        # note which team goes first
-# 2×2 tmux grid, one agent per pane:
-npm run agent -- --name red-spymaster  --game bsideslv-live --brain llm
-npm run agent -- --name red-operative  --game bsideslv-live --brain llm
-npm run agent -- --name blue-spymaster --game bsideslv-live --brain llm
-npm run agent -- --name blue-operative --game bsideslv-live --brain llm
+# 2×2 tmux grid, one agent per pane. The `agent` script lives in the agents
+# workspace — without -w this fails with `npm error Missing script: "agent"`.
+npm run agent -w @atproto-agents/agents -- --name red-spymaster  --game bsideslv-live --brain llm
+npm run agent -w @atproto-agents/agents -- --name red-operative  --game bsideslv-live --brain llm
+npm run agent -w @atproto-agents/agents -- --name blue-spymaster --game bsideslv-live --brain llm
+npm run agent -w @atproto-agents/agents -- --name blue-operative --game bsideslv-live --brain llm
 ```
 
 Narrator: each pane is an agent with its own DID and its own repo — it signs
