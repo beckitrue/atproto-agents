@@ -360,7 +360,18 @@ function Row({ row }: { row: FirehoseRow }) {
     )
   }
 
-  const verb = row.kind === 'clue' ? 'clues' : row.kind === 'guess' ? 'guesses' : 'passes'
+  const deliberating = row.kind === 'deliberate'
+  const verb = deliberating
+    ? row.stance === 'support'
+      ? 'backs'
+      : row.stance === 'object'
+        ? 'objects to'
+        : 'proposes'
+    : row.kind === 'clue'
+      ? 'clues'
+      : row.kind === 'guess'
+        ? 'guesses'
+        : 'passes'
   return (
     <div style={{ marginBottom: '0.6rem', lineHeight: 1.35 }}>
       <div style={{ fontSize: '0.8rem' }}>
@@ -368,6 +379,9 @@ function Row({ row }: { row: FirehoseRow }) {
         <b style={{ color: row.seated ? C.text : C.warn }}>
           {seat?.label ?? `unrecognized …${row.did.slice(-6)}`}
         </b>{' '}
+        {/* Deliberation is talk, not a move — mark it so the audience never
+            mistakes an argument for a committed guess. */}
+        {deliberating && <span title="deliberation — not a committed move">💬 </span>}
         <span style={{ color: C.muted }}>{verb}</span>
         {row.word && <b> “{row.word}”</b>}
         {row.count !== undefined && <span style={{ color: C.muted }}> for {row.count}</span>}

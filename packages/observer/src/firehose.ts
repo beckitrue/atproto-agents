@@ -32,6 +32,7 @@ const JETSTREAM_HOSTS = [
 ]
 const NSID_PREFIX = 'com.beckitrue.codenames.'
 const MOVE_COLLECTIONS = ['clue', 'guess', 'pass'].map((k) => NSID_PREFIX + k)
+const DELIBERATE = `${NSID_PREFIX}deliberate`
 
 /** Bounds memory no matter what arrives. */
 const MAX_ROWS = 200
@@ -45,11 +46,13 @@ export interface FirehoseRow {
   at: string
   game: string
   seated: boolean
-  /** Move rows carry a kind; referee rows are denials. */
-  kind: 'clue' | 'guess' | 'pass' | 'denial'
+  /** Move rows carry a kind; deliberate rows argue; referee rows are denials. */
+  kind: 'clue' | 'guess' | 'pass' | 'deliberate' | 'denial'
   team?: 'red' | 'blue'
   word?: string
   count?: number
+  /** Deliberation stance — argument, not action. */
+  stance?: 'propose' | 'support' | 'object'
   /** Only ever populated for seated agents — the injection vector. */
   reasoning?: string
   detail?: string
@@ -113,6 +116,20 @@ export function toRow(
     }
   }
 
+  if (collection === DELIBERATE) {
+    // Deliberation is argument, not action — a teammate proposing/supporting/
+    // objecting to a guess. Trust-tiered exactly like a move: strangers get
+    // their stance and the word shown, but never their prose.
+    const s = record?.stance
+    return {
+      key, did, at, game, seated, kind: 'deliberate',
+      team: team(record?.team),
+      word: sanitize(record?.word, 40),
+      stance: s === 'propose' || s === 'support' || s === 'object' ? s : undefined,
+      ...(seated ? { reasoning: sanitize(record?.reasoning) } : {}),
+    }
+  }
+
   if (!MOVE_COLLECTIONS.includes(collection)) return null
   const kind = collection.slice(NSID_PREFIX.length) as 'clue' | 'guess' | 'pass'
   return {
@@ -161,7 +178,7 @@ async function backfill(gameId: string | null, limit = 30): Promise<FirehoseRow[
       .filter(Boolean) as FirehoseRow[]
   }
   for (const did of PLAYER_DIDS) {
-    for (const c of MOVE_COLLECTIONS) fetches.push(load(did, c, limit).catch(() => []))
+    for (const c of [...MOVE_COLLECTIONS, DELIBERATE]) fetches.push(load(did, c, limit).catch(() => []))
   }
   fetches.push(load(REFEREE_DID, `${NSID_PREFIX}gameState`, limit * 3).catch(() => []))
   const all = await Promise.all(fetches)

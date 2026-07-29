@@ -64,6 +64,32 @@ describe('strangers speak, but not in prose', () => {
   })
 })
 
+describe('deliberation — argument, not action', () => {
+  const delib = (over: Record<string, unknown> = {}) => ({
+    game: GAME, team: 'red', stance: 'propose', word: 'DRAGON',
+    reasoning: 'fits the theme', createdAt: '2026-07-19T18:00:00.000Z', ...over,
+  })
+
+  it('renders a seated agent deliberation WITH stance and reasoning', () => {
+    const r = row(SEATED, `${NS}deliberate`, delib())
+    expect(r).toMatchObject({ kind: 'deliberate', seated: true, stance: 'propose', word: 'DRAGON', reasoning: 'fits the theme' })
+  })
+
+  it('renders a stranger deliberation WITHOUT their reasoning', () => {
+    const r = row(STRANGER, `${NS}deliberate`, delib({ stance: 'support' }))
+    expect(r).toMatchObject({ kind: 'deliberate', seated: false, stance: 'support', word: 'DRAGON' })
+    expect(r!.reasoning).toBeUndefined()
+  })
+
+  it('drops an unknown stance rather than rendering it', () => {
+    expect(row(SEATED, `${NS}deliberate`, delib({ stance: 'sabotage' }))!.stance).toBeUndefined()
+  })
+
+  it('scopes deliberation to the current game like moves', () => {
+    expect(row(SEATED, `${NS}deliberate`, delib({ game: 'some-other-game' }))).toBeNull()
+  })
+})
+
 describe('sanitizing text that lands on a projector', () => {
   it('strips control characters, newlines and bidi overrides', () => {
     // U+202E flips rendering direction; U+200B is invisible. Both are
