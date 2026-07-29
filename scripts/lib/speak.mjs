@@ -26,12 +26,14 @@ function withReasoning(head, tail, reasoning) {
 
 /**
  * Post a signed guess record + Bluesky mirror to the agent's own repo.
- * Returns the mirror text. validate:false because the guest's PDS has not
- * published our lexicon — the record is still signed and federates fine.
+ * Returns { uri, text }: the AT-URI of the signed guess record (feed straight
+ * into scripts/verify-record.mjs) and the mirror text. validate:false because
+ * the guest's PDS has not published our lexicon — the record is still signed
+ * and federates fine.
  */
 export async function speakGuess(agent, { game, team, word, reasoning }) {
   const createdAt = new Date().toISOString()
-  await agent.com.atproto.repo.createRecord({
+  const { data: record } = await agent.com.atproto.repo.createRecord({
     repo: did(agent),
     collection: ids.guess,
     record: { $type: ids.guess, game, team, word, ...(reasoning ? { reasoning } : {}), createdAt },
@@ -40,7 +42,7 @@ export async function speakGuess(agent, { game, team, word, reasoning }) {
   const head = `${TEAM_EMOJI[team] ?? '⬜'} ${shortName(agent)} guesses “${word}”`
   const text = withReasoning(head, `\n\n🎲 ${game}`, reasoning)
   await agent.post({ text, createdAt })
-  return text
+  return { uri: record.uri, text }
 }
 
 const STANCE_VERB = { propose: 'proposes', support: 'backs', object: 'objects to' }
