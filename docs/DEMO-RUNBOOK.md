@@ -37,6 +37,11 @@ Screen layout (one shared display):
 
 - [ ] Laptop: `set -a; source infra/.env; set +a` in every terminal pane; `export ENGINE_URL=https://game.beckitrue.com`
 - [ ] `curl -s $ENGINE_URL/games/nope` → `{"error":"game not found"}` (engine reachable through conference wifi; if not → local-engine fallback, below)
+- [ ] **Disable suspend for the duration.** A deep suspend tears down every TCP connection and
+      takes the SSM tunnel with it — the grant then fails at the closer. Pop!_OS power settings,
+      or wrap the session: `systemd-inhibit --what=sleep aws ssm start-session …`
+- [ ] **Open the SSM tunnel detached** (tmux/`setsid`), so closing a window can't kill it, then
+      confirm: `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/stores` → `200`
 - [ ] Observer running (`npm run dev --workspace @atproto-agents/observer`, vite proxy target set to `$ENGINE_URL`)
 - [ ] Phone hotspot tested (wifi fallback #1); backup video queued (fallback #2)
 
@@ -126,7 +131,12 @@ prints the game's tuples **before → after**: the guest's `active_guesser` row
 appears live in the command pane (`+`). Keep the observer beside it — the
 decision log flips `denied_authz` → `accepted` the moment the tuple lands.
 
+**Gate the tunnel first — as its own command, not folded into the grant.** The pre-flight check
+is not enough: the tunnel dies on suspend, and the gap between pre-flight and this beat is the
+whole talk. If this prints anything but `200`, re-open the tunnel before running the grant.
+
 ```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:8080/stores   # must be 200
 node scripts/grant-guest.mjs bsideslv-live                       # 🔑 the tuple — printed before → after
 node scripts/guest-move.mjs bsideslv-live <same-word>            # ✅ ACCEPTED
 ```
@@ -176,6 +186,7 @@ Restore afterwards (off stage): re-grant the tuple —
 | Posts not appearing on bsky.app | records exist on PDS but AppView stale | Show the PDS directly: `listRecords` URL (bookmark it); mirrors usually catch up in seconds |
 | Game ends mid-beats (assassin) | `game over` in panes | `node scripts/new-game.mjs bsideslv-live-2` and relaunch agent panes — under a minute; beats resume on the new game |
 | Guest accepted before grant | tuple left over from rehearsal | Pre-show checklist includes cleanup; live: `grant-guest.mjs <game> --revoke` and rerun |
+| `FGA unreachable at http://localhost:8080` | **laptop suspended** — SSM tunnel died with it (also: window running the session was closed) | Re-open the port-forward, confirm `/stores` → `200`, rerun the grant. Verified failure mode: two takes of the backup video died this way, one mid-recording |
 
 ## Post-show
 
