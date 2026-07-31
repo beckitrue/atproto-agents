@@ -111,6 +111,26 @@ export async function deleteGameTuples(token, gameId, { settleMs = 0 } = {}) {
   return { deleted, alreadyGone, failed }
 }
 
+/**
+ * Write or delete ONE tuple, idempotently — the grant/revoke path.
+ *
+ * `deleteGameTuples` clears a whole game, which is right for cleanup and wrong
+ * for the stage: revoking the guest must not take the roster's tuples with it.
+ * Same contract though — an FGA write is atomic and errors both on deleting a
+ * tuple that isn't there and on writing one that already is, so a second
+ * `--revoke` (or a grant over a tuple left from rehearsal) would exit non-zero
+ * in front of the room. Both of those mean "the world already looks the way you
+ * asked for", so both are success.
+ */
+export async function writeTuple(token, tuple, { remove = false } = {}) {
+  const res = await call(token, '/write', remove ? { deletes: { tuple_keys: [tuple] } } : { writes: { tuple_keys: [tuple] } })
+  if (res.ok) return { ok: true, noop: false }
+  const text = await res.text()
+  if (remove && MISSING.test(text)) return { ok: true, noop: true }
+  if (!remove && /already exist/i.test(text)) return { ok: true, noop: true }
+  return { ok: false, error: `${res.status} ${text}` }
+}
+
 /** Human summary; also the exit-code decision. */
 export function reportCleanup(gameId, { deleted, alreadyGone, failed }) {
   const bits = [`${deleted} deleted`]
