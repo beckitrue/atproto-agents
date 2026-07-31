@@ -45,6 +45,34 @@ export async function speakGuess(agent, { game, team, word, reasoning }) {
   return { uri: record.uri, text }
 }
 
+/**
+ * Post a signed clue record + Bluesky mirror to the agent's own repo. Same
+ * shape the well-behaved runner writes (packages/agents/src/poster.ts), but
+ * callable before the engine has ruled — an off-turn spymaster can still SAY
+ * the clue; only the engine decides whether it counts.
+ */
+export async function speakClue(agent, { game, team, word, count, reasoning }) {
+  const createdAt = new Date().toISOString()
+  const { data: record } = await agent.com.atproto.repo.createRecord({
+    repo: did(agent),
+    collection: ids.clue,
+    record: {
+      $type: ids.clue,
+      game,
+      team,
+      word,
+      count,
+      ...(reasoning ? { reasoning } : {}),
+      createdAt,
+    },
+    validate: false,
+  })
+  const head = `${TEAM_EMOJI[team] ?? '⬜'} ${shortName(agent)} clues “${word}” for ${count}`
+  const text = withReasoning(head, `\n\n🎲 ${game}`, reasoning)
+  await agent.post({ text, createdAt })
+  return { uri: record.uri, text }
+}
+
 const STANCE_VERB = { propose: 'proposes', support: 'backs', object: 'objects to' }
 
 /**
