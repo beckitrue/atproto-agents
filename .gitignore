@@ -14,3 +14,11 @@ dist/
 slides/dist/
 coverage/
 .DS_Store
+
+# Generated QR codes for the talk (regenerate with the starter-pack script)
+qr-codes/
+
+# Talk artifacts, kept out of the repo on purpose: generated QR codes and the
+# local excalidraw→pptx export tool (both reproducible, neither reviewed in a diff).
+qr-codes/
+slides/excalidraw-export/
