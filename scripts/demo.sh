@@ -11,8 +11,8 @@
 # re-sources the env, reads live game state, and figures out the off-turn team
 # and an unrevealed word itself — you type the verb, nothing else.
 #
-# Verbs: check | start | beat2 | beat3 | beat4 | beat5 | grant | kill
-#        cleanup | status
+# Verbs: check | start | beat2 | beat3 | beat4 | beat5 | grant | guest-guess
+#        revoke | cleanup | status
 #
 #aws ssm start-session --target i-0b952f691aa3efe83 --profile wrm-dev --region us-east-2
 #sudo su - ubuntu
@@ -24,13 +24,15 @@
 #./scripts/demo.sh beat3     # operative key ⛔, spymaster key ✅
 #./scripts/demo.sh beat4     # spymaster guess                → ⛔
 #./scripts/demo.sh beat5     # guest speaks, federates        → ⛔
-#./scripts/demo.sh grant     # grant tuple (before→after), guest submits → ✅
-#./scripts/demo.sh kill      # revoke, guest                  → ⛔
-#./scripts/demo.sh cleanup   # stop agents + clean FGA
+#./scripts/demo.sh grant       # grant tuple only (before→after diff)
+#./scripts/demo.sh guest-guess # imateapot submits             → ✅ (granted) / ⛔ (revoked)
+#./scripts/demo.sh revoke      # revoke tuple only (before→after diff)
+#./scripts/demo.sh cleanup     # stop agents + clean FGA
 #
 # Config (override via env if you must):
 DEMO_GAME="${DEMO_GAME:-bsideslv-live}"       # game id
 DEMO_SEED="${DEMO_SEED:-42}"                   # fixed seed => reproducible board across rehearsals
+DEMO_PACE="${DEMO_PACE:-9000}"                 # ms delay before each agent move — paces the game (~6 min); 0 = full speed
 GUEST_HANDLE="${GUEST_HANDLE:-imateapot.dev}"  # the foreign guest identity
 GUEST_DID="${GUEST_DID:-did:plc:hwp2bnldopc4e6xgh34wz5yu}"
 OBSERVER_URL="${OBSERVER_URL:-https://observer.beckitrue.com}"
@@ -169,11 +171,11 @@ start)
   node scripts/new-game.mjs "$GAME" "$DEMO_SEED" || die "new-game failed"
   note "starting team is above; board is on the observer: $OBSERVER_URL/?game=$GAME"
 
-  banner "ACT 0 — launch four LLM agents (detached; logs in /tmp/demo-agent-*.log)"
+  banner "ACT 0 — launch four LLM agents (detached; logs in /tmp/demo-agent-*.log; pace ${DEMO_PACE}ms/move)"
   for a in red-spymaster red-operative blue-spymaster blue-operative; do
     setsid bash -c "cd '$ROOT'; set -a; source infra/.env; set +a; \
       export ENGINE_URL='$ENGINE_URL'; \
-      npm run agent -w @atproto-agents/agents -- --name $a --game $GAME --brain llm" \
+      npm run agent -w @atproto-agents/agents -- --name $a --game $GAME --brain llm --pace $DEMO_PACE" \
       >"/tmp/demo-agent-$a.log" 2>&1 &
     echo "  started $a  (tail -f /tmp/demo-agent-$a.log)"
   done
@@ -224,35 +226,37 @@ beat5) # federation grants voice, not authority: guest speaks, then denied
   node scripts/guest-move.mjs "$GAME" "$word" --why "I reveal the assassin"
   ;;
 
-grant) # the closer: gate the tunnel, grant the tuple, guest submits -> accepted
+grant) # the closer, authority only: grant the guest's tuple, show before -> after
   _require_game
-  [ -n "${GUEST_AGENT_PDS_PASSWORD:-}" ] || die "GUEST_AGENT_PDS_PASSWORD not set in infra/.env"
   banner "CLOSER — gate FGA (must be 200)"
   code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/stores)
   echo "  localhost:8080/stores -> $code"
   [ "$code" = 200 ] || die "FGA not reachable — fix before granting."
-  ph="$(_state phase)"
-  [ "$ph" = "awaiting_guesses" ] || note "⚠ phase is '$ph', not awaiting_guesses — a guess needs an active clue; if the submit errors, wait for a clue on the observer and rerun './demo grant'."
   banner "CLOSER — grant the tuple (before -> after)"
   node scripts/grant-guest.mjs "$GAME" || die "grant failed"
-  # Reuse beat 5's exact word if it's still unrevealed — same action, now allowed.
+  note "seat granted — run './demo guest-guess' to have $GUEST_HANDLE actually submit."
+  ;;
+
+revoke) # the kill switch, authority only: revoke the tuple, show before -> after
+  _require_game
+  banner "KILL SWITCH — revoke the tuple (before -> after)"
+  node scripts/grant-guest.mjs "$GAME" --revoke || die "revoke failed"
+  note "authority removed — './demo guest-guess' now dies at FGA (voice remains)."
+  ;;
+
+guest-guess) # the action: the guest actually submits (accepted if granted, else denied)
+  _require_game
+  [ -n "${GUEST_AGENT_PDS_PASSWORD:-}" ] || die "GUEST_AGENT_PDS_PASSWORD not set in infra/.env"
+  # Reuse beat 5's exact word if it's still unrevealed — same action, now (dis)allowed.
   word=""
   if [ -f "$WORDFILE" ]; then
     w="$(cat "$WORDFILE")"
     if _unrevealed_words | grep -qxF "$w"; then word="$w"; note "same word as beat 5: $w"; fi
   fi
   [ -n "$word" ] || word="$(_state unrevealed)"
-  banner "CLOSER — the seat-holder submits (${word:-anchor})"
-  node scripts/guest-move.mjs "$GAME" "${word:-anchor}"
-  ;;
-
-kill) # encore: revoke the tuple, next guest attempt dies at FGA
-  _require_game
-  [ -n "${GUEST_AGENT_PDS_PASSWORD:-}" ] || die "GUEST_AGENT_PDS_PASSWORD not set in infra/.env"
-  banner "KILL SWITCH — revoke the tuple"
-  node scripts/grant-guest.mjs "$GAME" --revoke || die "revoke failed"
-  word="$(_state unrevealed)"
-  banner "KILL SWITCH — guest tries again ($word) — dies at FGA"
+  ph="$(_state phase)"
+  [ "$ph" = "awaiting_guesses" ] || note "⚠ phase is '$ph', not awaiting_guesses — an ACCEPTED guess needs an active clue (a denial works regardless)."
+  banner "GUEST GUESS — $GUEST_HANDLE submits (${word:-anchor})"
   node scripts/guest-move.mjs "$GAME" "${word:-anchor}"
   ;;
 
@@ -273,11 +277,12 @@ demo.sh — live BSidesLV run, one verb per beat.
   ./demo beat2     time-scoped authority   (off-turn spymaster clue -> denied)
   ./demo beat3     role-scoped data        (operative key denied, spymaster allowed)
   ./demo beat4     separation of duties    (spymaster guess -> denied)
-  ./demo beat5     federation = voice      (guest speaks, then denied)
-  ./demo grant     the closer              (grant tuple -> guest submits -> accepted)
-  ./demo kill      encore                  (revoke tuple -> guest denied at fga)
-  ./demo cleanup   stop agents + clean fga
-  ./demo status    turn / phase / unrevealed count
+  ./demo beat5       federation = voice      (guest speaks, then denied)
+  ./demo grant       the closer              (grant tuple only -> before/after diff)
+  ./demo guest-guess the action              (guest submits: accepted if granted, else denied)
+  ./demo revoke      the kill switch         (revoke tuple only -> before/after diff)
+  ./demo cleanup     stop agents + clean fga
+  ./demo status      turn / phase / unrevealed count
 
 game=$DEMO_GAME  guest=$GUEST_HANDLE
 EOF

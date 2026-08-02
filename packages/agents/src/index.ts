@@ -83,6 +83,9 @@ async function main(who: AgentConfig, game: string) {
     agent: who,
     gameId: game,
     ...(arg('--poll') ? { pollMs: Number(arg('--poll')) } : {}),
+    ...((arg('--pace') ?? process.env.AGENT_PACE_MS)
+      ? { paceMs: Number(arg('--pace') ?? process.env.AGENT_PACE_MS) }
+      : {}),
     // Speech is free — but never let a PDS hiccup stall the game itself.
     onMove: async (move) => {
       try {

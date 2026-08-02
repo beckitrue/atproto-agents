@@ -18,6 +18,8 @@ export interface RunnerOptions {
   agent: { name: string; team: Team; role: Role }
   gameId: string
   pollMs?: number
+  /** Deliberate delay before each of OUR moves — paces the game for viewing. */
+  paceMs?: number
   log?: (message: string) => void
   onMove?: (move: { kind: 'clue' | 'guess' | 'pass'; decision: ClueDecision | GuessDecision; state: PublicState }) => void | Promise<void>
 }
@@ -28,6 +30,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 export async function runAgent(opts: RunnerOptions): Promise<PublicState> {
   const { engine, agent, gameId } = opts
   const pollMs = opts.pollMs ?? 2000
+  const paceMs = opts.paceMs ?? 0
   const log = opts.log ?? ((m: string) => console.log(`[${agent.name}] ${m}`))
 
   let guessesMade = 0
@@ -58,6 +61,10 @@ export async function runAgent(opts: RunnerOptions): Promise<PublicState> {
       await sleep(pollMs)
       continue
     }
+
+    // Pace every move (including back-to-back guesses off one clue) so the demo
+    // reads at a human cadence rather than bursting through a turn.
+    if (paceMs) await sleep(paceMs)
 
     const result =
       agent.role === 'spymaster' ? await takeSpymasterTurn(opts, log) : await takeOperativeTurn(opts, state, guessesMade, log)
