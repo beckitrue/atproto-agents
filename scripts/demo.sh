@@ -275,8 +275,11 @@ _resolve_pace() {
 AGENT_PAT='^[^ ]*(npm|node) .*--name [a-z-]+ --game'
 # Operatives only — `freeze` stops these to park the board on a live clue.
 AGENT_PAT_OPERATIVE='^[^ ]*(npm|node) .*--name [a-z-]+-operative --game'
+# $2 names what is being stopped. `freeze` stops only the operatives, and a bare
+# "no agents running" there reads as "nothing was frozen" when it actually means
+# "they were already stopped, the board is still parked" — opposite conclusions.
 _stop_agents() {
-  local pat="${1:-$AGENT_PAT}" n
+  local pat="${1:-$AGENT_PAT}" noun="${2:-agent}" n
   local AGENT_PAT="$pat"   # everything below matches on the requested set
   n="$(pgrep -fc -- "$AGENT_PAT" 2>/dev/null)" || n=0
   if [ "${n:-0}" -gt 0 ]; then
@@ -285,12 +288,12 @@ _stop_agents() {
     pkill -9 -f -- "$AGENT_PAT" 2>/dev/null   # npm children that ignored TERM
     local left; left="$(pgrep -fc -- "$AGENT_PAT" 2>/dev/null)" || left=0
     if [ "${left:-0}" -gt 0 ]; then
-      echo "  WARNING: $left agent process(es) survived — check 'ps -ef | grep -- --game'" >&2
+      echo "  WARNING: $left $noun process(es) survived — check 'ps -ef | grep -- --game'" >&2
     else
-      echo "  stopped $n agent process(es)"
+      echo "  stopped $n $noun process(es)"
     fi
   else
-    echo "  no agents running"
+    echo "  no $noun processes were running (nothing to stop)"
   fi
 }
 
@@ -381,9 +384,38 @@ start)
   _ensure_build || die "workspace build failed"
   _ensure_guest_registry
   rm -f "$WORDFILE"
-  node scripts/new-game.mjs "$GAME" "$DEMO_SEED" || die "new-game failed
-(409 'game exists' means this id is spent — ids are single-use until the engine
- restarts. Use './demo relaunch' to move to a fresh one.)"
+  # Two different failures land here and they need different fixes, so name the
+  # one that actually happened rather than guessing. A 409 is a spent id; a 500
+  # is usually stale FGA tuples, which an engine restart does NOT clear.
+  if newgame_out="$(node scripts/new-game.mjs "$GAME" "$DEMO_SEED" 2>&1)"; then
+    printf '%s\n' "$newgame_out"
+  else
+    printf '%s\n' "$newgame_out" >&2
+    case "$newgame_out" in
+      *409*|*'game exists'*)
+        die "
+id '$GAME' is SPENT. Game ids are single-use: games live in the engine's
+in-memory map with no delete route, so this one can't be recreated until the
+engine restarts.
+  fastest:  ./scripts/demo.sh relaunch          (fresh id, agents relaunched)
+  or:       docker compose -f infra/docker-compose.yml restart engine
+            THEN: DEMO_GAME=$GAME ./scripts/demo.sh cleanup
+            A restart frees the id but NOT its FGA tuples — skip the cleanup and
+            the retry fails again with a 500 on duplicate tuples." ;;
+      *500*|*'internal error'*)
+        die "
+the engine returned 500. The usual cause is STALE FGA TUPLES for this id: an
+engine restart clears the games but tuples live in Postgres and survive it, so
+recreating '$GAME' rewrites role tuples that already exist and OpenFGA rejects
+the duplicates.
+  fix:      DEMO_GAME=$GAME ./scripts/demo.sh cleanup   # deletes the stale tuples
+            DEMO_GAME=$GAME ./scripts/demo.sh start
+  or:       ./scripts/demo.sh relaunch                  # fresh id, sidesteps it
+  confirm:  docker compose -f infra/docker-compose.yml logs engine --tail 50 | grep -i fga" ;;
+      *)
+        die "new-game failed — see the error above." ;;
+    esac
+  fi
   _remember_game
   note "starting team is above; board is on the observer: $OBSERVER_URL/?game=$GAME"
   _launch_agents
@@ -472,7 +504,7 @@ freeze) # park the board on a live clue so the closer has no time pressure
   fi
   # Operatives only: with nobody guessing, the turn never ends and the clue stays
   # live. The spymasters stay up but go idle — nothing will ask them for a clue.
-  _stop_agents "$AGENT_PAT_OPERATIVE"
+  _stop_agents "$AGENT_PAT_OPERATIVE" operative
   note "board parked: turn=$(_state turn) phase=$(_state phase) — the clue stays live."
   note "'./demo guest-guess' would submit: $(_state unrevealed)"
   note "(check that against the key card from beat 3 — an accepted guess on the"
