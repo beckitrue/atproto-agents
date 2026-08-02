@@ -146,7 +146,8 @@ WORDFILE="/tmp/demo-word-${GAME}.txt"   # beat 5's word, reused by the closer
 
 # The scripts import the workspace packages (@atproto-agents/lexicon, …) from
 # their compiled dist/. The engine runs from its own Docker build, so a fresh
-# checkout has no dist until this runs. Build only when missing — idempotent.
+# checkout has no dist until this runs.
+#
 # Why the workspace needs (re)building, if it does. Empty output = dist is current.
 #
 # Presence alone is not enough: a dist compiled before the last source edit passes
@@ -244,6 +245,49 @@ _resolve_pace() {
   else
     RESOLVED_PACE="$DEMO_PACE_SCRIPTED"
     PACE_WHY="scripted fallback — pace carries the whole cadence"
+  fi
+}
+
+# Stop every running agent, whatever game it belongs to.
+#
+# The obvious pattern does NOT work: agents are launched as
+#   npm run agent -w @atproto-agents/agents -- --name red-spymaster --game X …
+# but npm rewrites its own argv, so the live process reads
+#   npm run agent --name red-spymaster --game X …
+# with `-w @atproto-agents/agents --` gone. Matching on that string found only
+# the transient `bash -c` wrapper in the moment before bash exec'd into npm —
+# so it appeared to work right after launch and silently matched nothing
+# thereafter. `cleanup` printed "no agents running" while 28 agent processes
+# were live across two games, still calling the API.
+#
+# --name/--game survives into every layer (npm, tsx, node), so match on that.
+#
+# Anchored to an npm/node argv[0] so the pattern can only ever match an actual
+# agent. Without the anchor it also matches any *shell* whose command line
+# happens to contain the pattern text — which is not theoretical: while testing
+# this, a harness that inlined the pattern pkill'd its own shell. A script run
+# as `bash ./scripts/demo.sh cleanup` is safe either way, but the anchor costs
+# nothing and removes the footgun for anyone wrapping this in `bash -c`.
+#
+# Deliberately NOT scoped per-game: both callers want everything stopped, and a
+# per-game match needs a boundary or `--game bsideslv-live` also kills
+# `--game bsideslv-live-2` (verified on the box: 28 matches vs 16 with a boundary).
+AGENT_PAT='^[^ ]*(npm|node) .*--name [a-z-]+ --game'
+_stop_agents() {
+  local n
+  n="$(pgrep -fc -- "$AGENT_PAT" 2>/dev/null)" || n=0
+  if [ "${n:-0}" -gt 0 ]; then
+    pkill -f -- "$AGENT_PAT" 2>/dev/null
+    sleep 2
+    pkill -9 -f -- "$AGENT_PAT" 2>/dev/null   # npm children that ignored TERM
+    local left; left="$(pgrep -fc -- "$AGENT_PAT" 2>/dev/null)" || left=0
+    if [ "${left:-0}" -gt 0 ]; then
+      echo "  WARNING: $left agent process(es) survived — check 'ps -ef | grep -- --game'" >&2
+    else
+      echo "  stopped $n agent process(es)"
+    fi
+  else
+    echo "  no agents running"
   fi
 }
 
@@ -347,7 +391,7 @@ relaunch) # contingency: the game ended mid-beats — same demo, fresh game id
   new="$(_next_free_game)" || die "no free id in this series — restart the engine container to reclaim them"
   banner "RELAUNCH — $GAME is spent, moving to $new"
   note "game ids are single-use until the engine restarts (in-memory store, no delete)."
-  pkill -f "@atproto-agents/agents -- --name" 2>/dev/null && echo "  old agents stopped" || echo "  no agents running"
+  _stop_agents
   rm -f "$WORDFILE"                       # beat 5's word belonged to the old game
   GAME="$new"; WORDFILE="/tmp/demo-word-${GAME}.txt"; rm -f "$WORDFILE"
   node scripts/new-game.mjs "$GAME" "$DEMO_SEED" || die "new-game failed"
@@ -438,7 +482,7 @@ guest-guess) # the action: the guest actually submits (accepted if granted, else
 
 cleanup)
   banner "POST-SHOW — stop agents"
-  pkill -f "@atproto-agents/agents -- --name" 2>/dev/null && echo "  agents stopped" || echo "  no agents running"
+  _stop_agents
   banner "POST-SHOW — clean FGA for $GAME (+ revoke guest)"
   node scripts/grant-guest.mjs "$GAME" --revoke 2>/dev/null || true
   node scripts/cleanup-fga-game.mjs "$GAME"
