@@ -192,3 +192,10 @@ Restore afterwards (off stage): re-grant the tuple —
 
 - [ ] `node scripts/cleanup-fga-game.mjs bsideslv-live` (+ `--revoke` the guest if granted) — this is the whole cleanup; nothing to deactivate on the guest's side, its identity is its own
 - [ ] Leave the box up — the pitch was "federate your agents in"; attendees will
+
+If you want to dump active tuples:
+
+```bash
+curl -s localhost:8080/stores | jq -r '.stores[] | select(.name=="codenames") | .id' # Gets the store ID
+curl -s "localhost:8080/stores/<store id>/read" -H 'content-type: application/json' -d '{}' | jq '.tuples[].key' # Dump the tuples for that store
+```
