@@ -19,6 +19,51 @@ Screen layout (one shared display):
 | Browser: observer | Board + decision log — [observer.beckitrue.com](https://observer.beckitrue.com/) (`?game=<id>`) | throughout |
 | Terminal: `grant-guest` output | Tuples on the game, printed before → after each write (OpenFGA has no hosted UI) | grant, kill |
 | Browser: Bluesky | Referee feed + an agent profile + starter pack | beats, closing |
+| Firehose pane (optional) | Live network records — see *Firehose filter* below | beats, beat 5 especially |
+
+### Firehose filter
+
+Watch the game on the public network with a lexicon filter, not an identity
+list — this is what makes beat 5 land. You never enumerate the guest's DID; a
+stranger's PDS shows up in the pane because it wrote *your* lexicon.
+
+```
+wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=com.beckitrue.codenames.clue&wantedCollections=com.beckitrue.codenames.guess&wantedCollections=com.beckitrue.codenames.pass&wantedCollections=com.beckitrue.codenames.deliberate&wantedCollections=com.beckitrue.codenames.gameState
+```
+
+Verified by replaying a real run through Jetstream: 47 events across the closer
+window — 6 `clue`, 12 `guess`, 4 `pass`, 25 `gameState` — with the guest's
+`com.beckitrue.codenames.guess` among them.
+
+> ⚠️ **List every collection; a prefix silently matches nothing.**
+> `wantedCollections=com.beckitrue.codenames` looks right, connects fine, and
+> streams **zero events** — Jetstream treats it as a literal NSID, not a prefix.
+> Tested side by side against the same replay: prefix `0 events`, explicit list
+> `47`. A filter that returns nothing is indistinguishable from a quiet network.
+
+Both PDSes reach the same public relay — the agents on `pds.beckitrue.com` and
+the guest on `porcini.us-east.host.bsky.network` — so one pane covers the whole
+cast. **Do not scope the pane to your own PDS or relay:** every beat still looks
+correct and beat 5 loses its evidence, which is the one beat where a foreign PDS
+is the entire point.
+
+Variants:
+
+- **Guest only, everything it writes** — `?wantedDids=did:plc:hwp2bnldopc4e6xgh34wz5yu`
+  with no collection filter. Shows both records per move: the signed
+  `com.beckitrue.codenames.guess` *and* its `app.bsky.feed.post` mirror.
+- **Named cast** — `wantedDids` for referee `did:plc:xgdzu5egqclsjtiwiv7rkf2k`,
+  red-spymaster `y23rxwfoym64wg3xtf7xtpqg`, blue-spymaster `utqzhjtydl26qrmicatnr7a3`,
+  red-operative `4vfjuj6rnbq3bcqual3sikib`, blue-operative `gvzsjft7lqwc3ujo4rzqb22u`,
+  guest `hwp2bnldopc4e6xgh34wz5yu`. Note `wantedDids` and `wantedCollections`
+  **intersect** — combining them narrows, it does not widen.
+
+If the pane looks empty mid-show, check the guest published before blaming the
+filter — the records and their Bluesky mirrors are on a real PDS:
+
+```bash
+curl -s "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=imateapot.dev&limit=5" | jq -r '.feed[].post.record.text'
+```
 
 ## Pre-flight
 
@@ -123,6 +168,16 @@ is public and permanent. And it changed nothing. Federation let it *speak*;
 nobody gave it *authority*. (In the observer's firehose column it shows as an
 *unrecognized* DID — a counter, not rendered reasoning; its full post is in the
 Bluesky app / starter pack.)
+
+**Point at the firehose pane here.** The guest writes two records per move — the
+signed `com.beckitrue.codenames.guess` and an `app.bsky.feed.post` mirror — from
+a PDS you do not run, and both reach the public relay unaided. If the pane is
+filtered by lexicon (see *Firehose filter*), the guest appears in it without you
+ever having listed its DID. That is the beat, visible rather than asserted.
+
+If the pane shows nothing here while the earlier beats scrolled fine, the filter
+is scoped to your own PDS or uses a prefix — not a federation failure. Verify
+with the `getAuthorFeed` one-liner in *Firehose filter* and carry on.
 
 ## The live grant (the closer)
 
