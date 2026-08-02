@@ -89,8 +89,59 @@ curl -s "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=imat
       confirm: `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/stores` → `200`
 - [ ] Observer running (`npm run dev --workspace @atproto-agents/observer`, vite proxy target set to `$ENGINE_URL`)
 - [ ] Phone hotspot tested (wifi fallback #1); backup video queued (fallback #2)
+- [ ] **Reset the stage id — see below. Rehearsals leave it unusable.**
+
+### Reset the stage id (T-1 hour, on the box)
+
+Every rehearsal burns `bsideslv-live` in two independent places, and clearing
+only one of them fails in a way that looks like the other problem:
+
+| what a rehearsal leaves | where it lives | symptom if not cleared |
+|---|---|---|
+| the game object | engine's in-memory map, no delete route | `409 game exists` |
+| the role tuples | OpenFGA → **Postgres, survives an engine restart** | `500 internal error` |
+
+So **both**, in this order:
+
+```bash
+cd /home/ubuntu/atproto-agents
+DEMO_GAME=bsideslv-live   ./scripts/demo.sh cleanup     # tuples for the stage id
+DEMO_GAME=bsideslv-live-2 ./scripts/demo.sh cleanup     # and any relaunch ids used
+docker compose -f infra/docker-compose.yml restart engine   # frees every spent id
+curl -s -o /dev/null -w '%{http_code}\n' $ENGINE_URL/games  # 200 (502 for ~5s first)
+```
+
+Cleanup without the restart → `409`. Restart without the cleanup → `500`. A
+`start` that dies **after** creating the game still burns the id, so an aborted
+run costs exactly as much as a completed one.
+
+`./scripts/demo.sh check` reports the LLM, build, registry and active game, but
+**does not check whether the stage id is free** — do this reset regardless of
+what `check` says.
 
 ## Act 0 — start the game (2 min)
+
+Run on the box, from the repo root:
+
+```bash
+./scripts/demo.sh check                            # green, and exits non-zero if not
+DEMO_GAME=bsideslv-live ./scripts/demo.sh start    # game + all four agents
+```
+
+**The `DEMO_GAME=` prefix is required on this one command.** `start` and
+`relaunch` write the active id to `/tmp/demo-current-game`, and every later verb
+reads it — so the beats, `freeze`, `grant`, `guest-guess`, `revoke` and
+`cleanup` all follow the right game with no env var. But that file survives from
+the last rehearsal. Start without the prefix and you silently run the whole talk
+on a leftover id: every banner says `[game: …]`, every beat works, and it is not
+the game on the observer. `./scripts/demo.sh status` shows the active id and
+where it came from (`default` / `DEMO_GAME override` / `last start/relaunch`).
+
+Do **not** export `DEMO_GAME` — an exported value outranks the state file, so it
+would survive a `relaunch` and point the later beats at the dead game.
+
+<details>
+<summary>Manual fallback, if <code>demo.sh</code> is unavailable</summary>
 
 ```bash
 node scripts/new-game.mjs bsideslv-live        # note which team goes first
@@ -101,6 +152,13 @@ npm run agent -w @atproto-agents/agents -- --name red-operative  --game bsideslv
 npm run agent -w @atproto-agents/agents -- --name blue-spymaster --game bsideslv-live --brain llm
 npm run agent -w @atproto-agents/agents -- --name blue-operative --game bsideslv-live --brain llm
 ```
+
+This path skips what `demo.sh` does for you: the live API-key ping, pacing
+chosen from whether the LLM actually answers (3000ms live / 9000ms scripted),
+the rebuild-if-stale check, and the state file. A stale key here degrades every
+agent to the scripted brain **silently** — dull clues, no 🧠 thinking, and no
+error anywhere.
+</details>
 
 Narrator: each pane is an agent with its own DID and its own repo — it signs
 its own token, no IdP in the loop. Behind the scenes the engine just wrote each
@@ -261,7 +319,11 @@ Restore afterwards (off stage): re-grant the tuple —
 | Conference wifi dies | agent panes error on fetch | Phone hotspot; agents/engine reconnect on next poll. If still dead → backup video |
 | Engine (EC2) unreachable | `curl $ENGINE_URL` fails pre-show | Local fallback: `PORT=8091 node packages/engine/dist/index.js`, `export ENGINE_URL=http://localhost:8091`, observer proxy follows; audience loses nothing except attendee API access |
 | Posts not appearing on bsky.app | records exist on PDS but AppView stale | Show the PDS directly: `listRecords` URL (bookmark it); mirrors usually catch up in seconds |
-| Game ends mid-beats (assassin) | `game over` in panes | `./scripts/demo.sh relaunch` — picks the next free id, restarts all four agents, and every later verb follows it with no `DEMO_GAME` needed. **A game id is single-use:** games live in an in-memory map with no delete, so re-running `start` on `bsideslv-live` returns `409 game exists`. Only an engine restart reclaims a spent id. Manual equivalent: `node scripts/new-game.mjs bsideslv-live-2` + relaunch the agent panes |
+| Game ends mid-beats (assassin) | `game over` in panes | `./scripts/demo.sh relaunch` — next free id, all four agents restarted, later verbs follow it automatically. **A game id is single-use** (in-memory map, no delete), so re-running `start` on the same id returns `409`. Manual equivalent: `node scripts/new-game.mjs bsideslv-live-2` + relaunch the agent panes |
+| `start` → `409 game exists` | id already used this session | `./scripts/demo.sh relaunch` (fastest). Reclaiming the *same* id needs an engine restart **and** `DEMO_GAME=<id> ./scripts/demo.sh cleanup` — see *Reset the stage id* |
+| `start` → `500 internal error` | **stale FGA tuples**, not a broken engine | The tuples outlive an engine restart (Postgres), so recreating the id rewrites rows OpenFGA already has. `DEMO_GAME=<id> ./scripts/demo.sh cleanup` then `start`, or `relaunch` to sidestep. Confirm: `docker compose -f infra/docker-compose.yml logs engine --tail 50 \| grep -i fga` → `cannot write a tuple which already exists` |
+| Guest guess denied at the closer | `denied_rules — no active clue` | **The grant is fine** — FGA let it through and the *game* refused: no live clue. `denied_authz` is the broken-grant symptom; `denied_rules` is not. Run `./scripts/demo.sh freeze` and retry |
+| Beats hitting the wrong game | banners name an id you don't expect | The state file is stale. `./scripts/demo.sh status` shows the active id and its source; `DEMO_GAME=<id> ./scripts/demo.sh start` resets it |
 | Guest accepted before grant | tuple left over from rehearsal | Pre-show checklist includes cleanup; live: `grant-guest.mjs <game> --revoke` and rerun |
 | `FGA unreachable at http://localhost:8080` | **laptop suspended** — SSM tunnel died with it (also: window running the session was closed) | Re-open the port-forward, confirm `/stores` → `200`, rerun the grant. Verified failure mode: two takes of the backup video died this way, one mid-recording |
 
