@@ -125,11 +125,35 @@ WORDFILE="/tmp/demo-word-${DEMO_GAME}.txt"   # beat 5's word, reused by the clos
 # The scripts import the workspace packages (@atproto-agents/lexicon, …) from
 # their compiled dist/. The engine runs from its own Docker build, so a fresh
 # checkout has no dist until this runs. Build only when missing — idempotent.
+# Why the workspace needs (re)building, if it does. Empty output = dist is current.
+#
+# Presence alone is not enough: a dist compiled before the last source edit passes
+# an existence check and then silently runs stale code — e.g. a dist predating the
+# --pace commit would make the agents ignore pacing entirely, with no error. Same
+# trap the old ANTHROPIC_API_KEY check fell into: checked that it was there, not
+# that it was right. Compare mtimes instead.
+#
+# A `git checkout` rewrites source mtimes even when content is unchanged, so this
+# errs toward rebuilding. That is the safe direction — the build is idempotent and
+# takes ~20s.
+_build_reason() {
+  local p
+  for p in lexicon agents; do
+    [ -f "packages/$p/dist/index.js" ] || { echo "dist missing"; return; }
+  done
+  for p in lexicon agents; do
+    if [ -n "$(find "packages/$p/src" -name '*.ts' -newer "packages/$p/dist/index.js" -print -quit 2>/dev/null)" ]; then
+      echo "src newer than dist"
+      return
+    fi
+  done
+  echo ""
+}
+
 _ensure_build() {
-  if [ -f packages/lexicon/dist/index.js ] && [ -f packages/agents/dist/index.js ]; then
-    return 0
-  fi
-  echo "building workspace packages (first run; ~20s)…"
+  local why; why="$(_build_reason)"
+  [ -n "$why" ] || return 0
+  echo "building workspace packages ($why; ~20s)…"
   npm run build >/tmp/demo-build.log 2>&1 || { echo "build failed — see /tmp/demo-build.log" >&2; return 1; }
   echo "build done."
 }
@@ -225,8 +249,9 @@ check)
     note "         agents would run SCRIPTED: no 🧠 thinking, no real clues."
   fi
   printf 'build    packages/*/dist ... '
-  { [ -f packages/lexicon/dist/index.js ] && [ -f packages/agents/dist/index.js ]; } \
-    && echo "built" || echo "MISSING — './demo start' will build, or run 'npm run build'"
+  build_why="$(_build_reason)"
+  [ -z "$build_why" ] && echo "current" \
+    || echo "$build_why — './demo start' will rebuild, or run 'npm run build'"
   printf 'registry guest ... '
   _ensure_guest_registry
   printf 'pace     ./demo start would use ... '
