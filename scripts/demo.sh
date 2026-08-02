@@ -32,7 +32,18 @@
 # Config (override via env if you must):
 DEMO_GAME="${DEMO_GAME:-bsideslv-live}"       # game id
 DEMO_SEED="${DEMO_SEED:-42}"                   # fixed seed => reproducible board across rehearsals
-DEMO_PACE="${DEMO_PACE:-9000}"                 # ms delay before each agent move — paces the game (~6 min); 0 = full speed
+# Pace = artificial delay before each agent move. It STACKS on top of however
+# long the move itself takes, so the right value depends on whether the agents
+# are really reaching Claude:
+#   live LLM  — a clue costs ~15s of real thinking, a guess ~5s. That is already
+#               the pacing; only a little padding is wanted on top.
+#   scripted  — the fallback brain decides in ~0ms, so the pace is the ONLY
+#               thing slowing the game and has to carry the whole cadence.
+# 'auto' pings the API in ./demo check|start and picks accordingly; set
+# DEMO_PACE to a number to override.
+DEMO_PACE="${DEMO_PACE:-auto}"
+DEMO_PACE_LLM="${DEMO_PACE_LLM:-3000}"           # ms, when the LLM answers
+DEMO_PACE_SCRIPTED="${DEMO_PACE_SCRIPTED:-9000}" # ms, when we've fallen back to scripted
 GUEST_HANDLE="${GUEST_HANDLE:-imateapot.dev}"  # the foreign guest identity
 GUEST_DID="${GUEST_DID:-did:plc:hwp2bnldopc4e6xgh34wz5yu}"
 OBSERVER_URL="${OBSERVER_URL:-https://observer.beckitrue.com}"
@@ -114,11 +125,35 @@ WORDFILE="/tmp/demo-word-${DEMO_GAME}.txt"   # beat 5's word, reused by the clos
 # The scripts import the workspace packages (@atproto-agents/lexicon, …) from
 # their compiled dist/. The engine runs from its own Docker build, so a fresh
 # checkout has no dist until this runs. Build only when missing — idempotent.
+# Why the workspace needs (re)building, if it does. Empty output = dist is current.
+#
+# Presence alone is not enough: a dist compiled before the last source edit passes
+# an existence check and then silently runs stale code — e.g. a dist predating the
+# --pace commit would make the agents ignore pacing entirely, with no error. Same
+# trap the old ANTHROPIC_API_KEY check fell into: checked that it was there, not
+# that it was right. Compare mtimes instead.
+#
+# A `git checkout` rewrites source mtimes even when content is unchanged, so this
+# errs toward rebuilding. That is the safe direction — the build is idempotent and
+# takes ~20s.
+_build_reason() {
+  local p
+  for p in lexicon agents; do
+    [ -f "packages/$p/dist/index.js" ] || { echo "dist missing"; return; }
+  done
+  for p in lexicon agents; do
+    if [ -n "$(find "packages/$p/src" -name '*.ts' -newer "packages/$p/dist/index.js" -print -quit 2>/dev/null)" ]; then
+      echo "src newer than dist"
+      return
+    fi
+  done
+  echo ""
+}
+
 _ensure_build() {
-  if [ -f packages/lexicon/dist/index.js ] && [ -f packages/agents/dist/index.js ]; then
-    return 0
-  fi
-  echo "building workspace packages (first run; ~20s)…"
+  local why; why="$(_build_reason)"
+  [ -n "$why" ] || return 0
+  echo "building workspace packages ($why; ~20s)…"
   npm run build >/tmp/demo-build.log 2>&1 || { echo "build failed — see /tmp/demo-build.log" >&2; return 1; }
   echo "build done."
 }
@@ -139,6 +174,57 @@ _ensure_guest_registry() {
   ' "$GUEST_HANDLE" "$GUEST_DID"
 }
 
+# A real one-token call against the model the agents will actually use. Proves
+# the key is VALID, not merely present: a stale key passes a non-empty check and
+# then silently degrades every agent to the scripted brain (withFallback() in
+# brain.ts swallows the error), which looks like a working demo with dull clues
+# and no 🧠 thinking. Sets LLM_PING_ERR on failure. Never prints the key.
+LLM_PING_ERR=""
+LLM_PING_RC=""   # cached: key and model can't change mid-run, so ping only once
+_llm_ping() {
+  [ -z "$LLM_PING_RC" ] || return "$LLM_PING_RC"
+  local model="${ANTHROPIC_MODEL:-claude-opus-4-8}"
+  LLM_PING_ERR=""
+  if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+    LLM_PING_ERR="ANTHROPIC_API_KEY not set in infra/.env"
+    LLM_PING_RC=1; return 1
+  fi
+  local out code body
+  out="$(curl -s -m 20 -w '\n%{http_code}' https://api.anthropic.com/v1/messages \
+    -H "x-api-key: $ANTHROPIC_API_KEY" \
+    -H 'anthropic-version: 2023-06-01' \
+    -H 'content-type: application/json' \
+    -d "{\"model\":\"$model\",\"max_tokens\":1,\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}]}")" \
+    || { LLM_PING_ERR="could not reach api.anthropic.com"; LLM_PING_RC=1; return 1; }
+  code="${out##*$'\n'}"
+  body="${out%$'\n'*}"
+  if [ "$code" = 200 ]; then LLM_PING_RC=0; return 0; fi
+  LLM_PING_ERR="HTTP $code — $(printf '%s' "$body" | node -e '
+    let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
+      try { const j = JSON.parse(s); process.stdout.write((j.error && j.error.message) || s.slice(0,200)); }
+      catch { process.stdout.write(s.slice(0,200)); }
+    });')"
+  LLM_PING_RC=1
+  return 1
+}
+
+# Pick the pace for ./demo start. See the DEMO_PACE comment above for why the
+# live-LLM and scripted numbers differ by 3x.
+RESOLVED_PACE=""
+PACE_WHY=""
+_resolve_pace() {
+  if [ "$DEMO_PACE" != auto ]; then
+    RESOLVED_PACE="$DEMO_PACE"
+    PACE_WHY="DEMO_PACE override"
+  elif _llm_ping; then
+    RESOLVED_PACE="$DEMO_PACE_LLM"
+    PACE_WHY="live LLM — ~15s/clue + ~5s/guess of real thinking lands on top"
+  else
+    RESOLVED_PACE="$DEMO_PACE_SCRIPTED"
+    PACE_WHY="scripted fallback — pace carries the whole cadence"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 case "${1:-}" in
 
@@ -154,13 +240,25 @@ check)
   [ -n "${FGA_STORE_ID:-}" ] && echo "$FGA_STORE_ID" || echo "UNRESOLVED (grant/kill/cleanup will fail)"
   printf 'guest pw GUEST_AGENT_PDS_PASSWORD ... '
   [ -n "${GUEST_AGENT_PDS_PASSWORD:-}" ] && echo "set" || echo "MISSING (beat5/grant/kill will fail)"
-  printf 'anthropic ANTHROPIC_API_KEY ... '
-  [ -n "${ANTHROPIC_API_KEY:-}" ] && echo "set" || echo "MISSING (agents fall back to scripted)"
+  printf 'anthropic %s ... ' "${ANTHROPIC_MODEL:-claude-opus-4-8}"
+  if _llm_ping; then
+    echo "200 ok — live LLM"
+  else
+    CHECK_FAILED=1
+    printf '\033[1;31mFAILED: %s\033[0m\n' "$LLM_PING_ERR"
+    note "         agents would run SCRIPTED: no 🧠 thinking, no real clues."
+  fi
   printf 'build    packages/*/dist ... '
-  { [ -f packages/lexicon/dist/index.js ] && [ -f packages/agents/dist/index.js ]; } \
-    && echo "built" || echo "MISSING — './demo start' will build, or run 'npm run build'"
+  build_why="$(_build_reason)"
+  [ -z "$build_why" ] && echo "current" \
+    || echo "$build_why — './demo start' will rebuild, or run 'npm run build'"
   printf 'registry guest ... '
   _ensure_guest_registry
+  printf 'pace     ./demo start would use ... '
+  _resolve_pace
+  echo "${RESOLVED_PACE}ms  ($PACE_WHY)"
+  [ -z "${CHECK_FAILED:-}" ] || die "
+PRE-FLIGHT FAILED — fix the above before going on stage."
   ;;
 
 start)
@@ -171,11 +269,18 @@ start)
   node scripts/new-game.mjs "$GAME" "$DEMO_SEED" || die "new-game failed"
   note "starting team is above; board is on the observer: $OBSERVER_URL/?game=$GAME"
 
-  banner "ACT 0 — launch four LLM agents (detached; logs in /tmp/demo-agent-*.log; pace ${DEMO_PACE}ms/move)"
+  _resolve_pace
+  if [ "$DEMO_PACE" = auto ] && [ -n "$LLM_PING_ERR" ]; then
+    printf '\n\033[1;31m!! LLM UNREACHABLE: %s\033[0m\n' "$LLM_PING_ERR" >&2
+    note "   agents will run SCRIPTED — no 🧠 thinking, no real clues."
+    note "   pacing to ${RESOLVED_PACE}ms so the game still reads at a human cadence."
+  fi
+
+  banner "ACT 0 — launch four LLM agents (detached; logs in /tmp/demo-agent-*.log; pace ${RESOLVED_PACE}ms/move)"
   for a in red-spymaster red-operative blue-spymaster blue-operative; do
     setsid bash -c "cd '$ROOT'; set -a; source infra/.env; set +a; \
       export ENGINE_URL='$ENGINE_URL'; \
-      npm run agent -w @atproto-agents/agents -- --name $a --game $GAME --brain llm --pace $DEMO_PACE" \
+      npm run agent -w @atproto-agents/agents -- --name $a --game $GAME --brain llm --pace $RESOLVED_PACE" \
       >"/tmp/demo-agent-$a.log" 2>&1 &
     echo "  started $a  (tail -f /tmp/demo-agent-$a.log)"
   done
@@ -272,7 +377,9 @@ cleanup)
   cat >&2 <<EOF
 demo.sh — live BSidesLV run, one verb per beat.
 
-  ./demo check     pre-flight (engine, fga=200, guest pw, registry, anthropic key)
+  ./demo check     pre-flight (engine, fga=200, guest pw, registry, LIVE anthropic ping)
+                   exits non-zero if the LLM ping fails — a stale key otherwise
+                   degrades every agent to the scripted brain, silently.
   ./demo start     new seeded game + 4 LLM agents (beat 1 runs itself)
   ./demo beat2     time-scoped authority   (off-turn spymaster clue -> denied)
   ./demo beat3     role-scoped data        (operative key denied, spymaster allowed)
@@ -285,6 +392,7 @@ demo.sh — live BSidesLV run, one verb per beat.
   ./demo status      turn / phase / unrevealed count
 
 game=$DEMO_GAME  guest=$GUEST_HANDLE
+pace=$DEMO_PACE (auto => ${DEMO_PACE_LLM}ms live LLM / ${DEMO_PACE_SCRIPTED}ms scripted fallback)
 EOF
   exit 1
   ;;
