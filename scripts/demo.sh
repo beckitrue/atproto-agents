@@ -12,7 +12,7 @@
 # and an unrevealed word itself — you type the verb, nothing else.
 #
 # Verbs: check | start | beat2 | beat3 | beat4 | beat5 | grant | guest-guess
-#        revoke | cleanup | status
+#        revoke | cleanup | status | relaunch
 #
 #aws ssm start-session --target i-0b952f691aa3efe83 --profile wrm-dev --region us-east-2
 #sudo su - ubuntu
@@ -30,7 +30,21 @@
 #./scripts/demo.sh cleanup     # stop agents + clean FGA
 #
 # Config (override via env if you must):
-DEMO_GAME="${DEMO_GAME:-bsideslv-live}"       # game id
+# The active game id, resolved in this order:
+#   1. DEMO_GAME=... in the environment (explicit override, always wins)
+#   2. the id `start` / `relaunch` last wrote to DEMO_STATE
+#   3. DEMO_GAME_DEFAULT
+#
+# Why the state file: a game id is single-use until the engine restarts (games
+# live in an in-memory Map with no DELETE route, so re-creating one returns
+# 409 "game exists"). `relaunch` therefore moves the demo to a FRESH id, and
+# every later verb — beats, grant, guest-guess, revoke, cleanup — has to follow
+# it. Making the operator re-pass DEMO_GAME on each one is a footgun: a beat run
+# against the dead game still prints ⛔, because FGA denies on a finished game
+# just as readily, so the mistake looks exactly like success. Every banner
+# echoes the active id, so this state is visible rather than hidden.
+DEMO_GAME_DEFAULT="${DEMO_GAME_DEFAULT:-bsideslv-live}"
+DEMO_STATE="${DEMO_STATE:-/tmp/demo-current-game}"
 DEMO_SEED="${DEMO_SEED:-42}"                   # fixed seed => reproducible board across rehearsals
 # Pace = artificial delay before each agent move. It STACKS on top of however
 # long the move itself takes, so the right value depends on whether the agents
@@ -75,10 +89,18 @@ if [ -z "${FGA_STORE_ID:-}" ]; then
   export FGA_STORE_ID
 fi
 
-GAME="$DEMO_GAME"
+if [ -n "${DEMO_GAME:-}" ]; then
+  GAME="$DEMO_GAME";              GAME_SRC="DEMO_GAME override"
+elif [ -s "$DEMO_STATE" ]; then
+  GAME="$(cat "$DEMO_STATE")";    GAME_SRC="last start/relaunch, via $DEMO_STATE"
+else
+  GAME="$DEMO_GAME_DEFAULT";      GAME_SRC="default"
+fi
 
 # --- tiny helpers ------------------------------------------------------------
-banner() { printf '\n\033[1;36m=== %s ===\033[0m\n' "$*"; }
+# Every banner carries the active game id — after a relaunch the demo is on a
+# different game, and that must never be something you have to remember.
+banner() { printf '\n\033[1;36m=== %s ===\033[0m \033[2m[game: %s]\033[0m\n' "$*" "$GAME"; }
 note()   { printf '\033[2m%s\033[0m\n' "$*"; }
 die()    { printf '\033[1;31m%s\033[0m\n' "$*" >&2; exit 1; }
 
@@ -120,7 +142,7 @@ _unrevealed_words() {
     });'
 }
 
-WORDFILE="/tmp/demo-word-${DEMO_GAME}.txt"   # beat 5's word, reused by the closer
+WORDFILE="/tmp/demo-word-${GAME}.txt"   # beat 5's word, reused by the closer
 
 # The scripts import the workspace packages (@atproto-agents/lexicon, …) from
 # their compiled dist/. The engine runs from its own Docker build, so a fresh
@@ -225,11 +247,55 @@ _resolve_pace() {
   fi
 }
 
+# Launch the four agents against $GAME. Shared by `start` and `relaunch` so the
+# contingency path can't drift from the one rehearsed.
+_launch_agents() {
+  _resolve_pace
+  if [ "$DEMO_PACE" = auto ] && [ -n "$LLM_PING_ERR" ]; then
+    printf '\n\033[1;31m!! LLM UNREACHABLE: %s\033[0m\n' "$LLM_PING_ERR" >&2
+    note "   agents will run SCRIPTED — no 🧠 thinking, no real clues."
+    note "   pacing to ${RESOLVED_PACE}ms so the game still reads at a human cadence."
+  fi
+  banner "launch four LLM agents (detached; logs in /tmp/demo-agent-*.log; pace ${RESOLVED_PACE}ms/move)"
+  for a in red-spymaster red-operative blue-spymaster blue-operative; do
+    setsid bash -c "cd '$ROOT'; set -a; source infra/.env; set +a; \
+      export ENGINE_URL='$ENGINE_URL'; \
+      npm run agent -w @atproto-agents/agents -- --name $a --game $GAME --brain llm --pace $RESOLVED_PACE" \
+      >"/tmp/demo-agent-$a.log" 2>&1 &
+    echo "  started $a  (tail -f /tmp/demo-agent-$a.log)"
+  done
+}
+
+# Remember the active game so every later verb follows it without DEMO_GAME.
+_remember_game() {
+  printf '%s' "$GAME" > "$DEMO_STATE" \
+    && note "active game is now $GAME — later verbs follow it automatically ($DEMO_STATE)" \
+    || echo "WARNING: could not write $DEMO_STATE; pass DEMO_GAME=$GAME to every later verb" >&2
+}
+
+# The next unused id in the base-N series, given what the engine already holds.
+_next_free_game() {
+  local base existing cand n
+  base="$(printf '%s' "$GAME" | sed -E 's/-[0-9]+$//')"
+  existing="$(curl -s -m 15 "$ENGINE_URL/games" | node -e '
+    let s=""; process.stdin.on("data",d=>s+=d).on("end",()=>{
+      try { const j = JSON.parse(s); console.log((j.games||[]).map(g=>g.id).join("\n")); }
+      catch { console.log(""); }
+    });')"
+  for n in 2 3 4 5 6 7 8 9 10 11 12; do
+    cand="$base-$n"
+    printf '%s\n' "$existing" | grep -qxF "$cand" || { printf '%s' "$cand"; return 0; }
+  done
+  return 1
+}
+
 # ---------------------------------------------------------------------------
 case "${1:-}" in
 
 check)
   banner "PRE-FLIGHT"
+  printf 'game     active ... '
+  echo "$GAME  ($GAME_SRC)"
   printf 'engine   %s ... ' "$ENGINE_URL"
   ecode=$(curl -s -o /dev/null -w '%{http_code}' "$ENGINE_URL/games")
   [ "$ecode" = 200 ] && echo "200 ok" || echo "UNREACHABLE ($ecode)"
@@ -266,30 +332,35 @@ start)
   _ensure_build || die "workspace build failed"
   _ensure_guest_registry
   rm -f "$WORDFILE"
-  node scripts/new-game.mjs "$GAME" "$DEMO_SEED" || die "new-game failed"
+  node scripts/new-game.mjs "$GAME" "$DEMO_SEED" || die "new-game failed
+(409 'game exists' means this id is spent — ids are single-use until the engine
+ restarts. Use './demo relaunch' to move to a fresh one.)"
+  _remember_game
   note "starting team is above; board is on the observer: $OBSERVER_URL/?game=$GAME"
-
-  _resolve_pace
-  if [ "$DEMO_PACE" = auto ] && [ -n "$LLM_PING_ERR" ]; then
-    printf '\n\033[1;31m!! LLM UNREACHABLE: %s\033[0m\n' "$LLM_PING_ERR" >&2
-    note "   agents will run SCRIPTED — no 🧠 thinking, no real clues."
-    note "   pacing to ${RESOLVED_PACE}ms so the game still reads at a human cadence."
-  fi
-
-  banner "ACT 0 — launch four LLM agents (detached; logs in /tmp/demo-agent-*.log; pace ${RESOLVED_PACE}ms/move)"
-  for a in red-spymaster red-operative blue-spymaster blue-operative; do
-    setsid bash -c "cd '$ROOT'; set -a; source infra/.env; set +a; \
-      export ENGINE_URL='$ENGINE_URL'; \
-      npm run agent -w @atproto-agents/agents -- --name $a --game $GAME --brain llm --pace $RESOLVED_PACE" \
-      >"/tmp/demo-agent-$a.log" 2>&1 &
-    echo "  started $a  (tail -f /tmp/demo-agent-$a.log)"
-  done
+  _launch_agents
   note "Beat 1 is automatic: watch the agent logs / observer for the first clue + 🧠 thinking."
+  ;;
+
+relaunch) # contingency: the game ended mid-beats — same demo, fresh game id
+  _ensure_build || die "workspace build failed"
+  _ensure_guest_registry
+  new="$(_next_free_game)" || die "no free id in this series — restart the engine container to reclaim them"
+  banner "RELAUNCH — $GAME is spent, moving to $new"
+  note "game ids are single-use until the engine restarts (in-memory store, no delete)."
+  pkill -f "@atproto-agents/agents -- --name" 2>/dev/null && echo "  old agents stopped" || echo "  no agents running"
+  rm -f "$WORDFILE"                       # beat 5's word belonged to the old game
+  GAME="$new"; WORDFILE="/tmp/demo-word-${GAME}.txt"; rm -f "$WORDFILE"
+  node scripts/new-game.mjs "$GAME" "$DEMO_SEED" || die "new-game failed"
+  _remember_game
+  note "board: $OBSERVER_URL/?game=$GAME"
+  _launch_agents
+  note "beats resume on $GAME — no DEMO_GAME needed, they follow it."
   ;;
 
 status)
   _require_game
-  banner "STATUS — $GAME"
+  banner "STATUS"
+  echo "game:        $GAME  ($GAME_SRC)"
   echo "turn:        $(_state turn)"
   echo "phase:       $(_state phase)"
   echo "winner:      $(_state winner)"
@@ -388,10 +459,12 @@ demo.sh — live BSidesLV run, one verb per beat.
   ./demo grant       the closer              (grant tuple only -> before/after diff)
   ./demo guest-guess the action              (guest submits: accepted if granted, else denied)
   ./demo revoke      the kill switch         (revoke tuple only -> before/after diff)
-  ./demo cleanup     stop agents + clean fga
-  ./demo status      turn / phase / unrevealed count
+  ./demo cleanup     stop agents + clean fga (for the ACTIVE game)
+  ./demo status      game / turn / phase / unrevealed count
+  ./demo relaunch    game died mid-beats: fresh id, new game, agents relaunched.
+                     Later verbs follow the new id automatically — no DEMO_GAME.
 
-game=$DEMO_GAME  guest=$GUEST_HANDLE
+game=$GAME ($GAME_SRC)  guest=$GUEST_HANDLE
 pace=$DEMO_PACE (auto => ${DEMO_PACE_LLM}ms live LLM / ${DEMO_PACE_SCRIPTED}ms scripted fallback)
 EOF
   exit 1
