@@ -126,6 +126,28 @@ Bluesky app / starter pack.)
 
 ## The live grant (the closer)
 
+**Freeze the board first — `./scripts/demo.sh freeze`.**
+
+An ACCEPTED guest guess needs `phase=awaiting_guesses`, i.e. a clue that no
+operative has consumed yet. Measured on this box across five consecutive turns,
+that window is **25–32 seconds wide** (median 26s) — the operatives take a clue,
+guess twice and pass, and it shuts. Hitting that while narrating is not a bet
+worth taking, and a missed window does not look like a timing problem on stage:
+the guest guess comes back `denied_rules — no active clue to guess against`,
+which reads like the grant failed when authority is in fact working perfectly.
+(`denied_authz` = FGA said no. `denied_rules` = FGA said yes, the game said no.
+Only the first means the grant is broken.)
+
+`freeze` waits for a clue to land, then stops **only the operatives**. With
+nobody guessing, the turn never ends and the clue stays live indefinitely, so
+the whole closer runs at narration pace. The spymasters stay up and idle. It
+also removes two other stage risks: the board stops moving while you talk about
+authority, and the game can no longer end mid-closer (both observed rehearsals
+ended on an assassin around the 5-minute mark).
+
+`freeze` prints the word `guest-guess` will submit — check it against the key
+card from beat 3. An accepted guess on the assassin ends the game instantly.
+
 The write must be seen — and OpenFGA has no dashboard, so `grant-guest` itself
 prints the game's tuples **before → after**: the guest's `active_guesser` row
 appears live in the command pane (`+`). Keep the observer beside it — the

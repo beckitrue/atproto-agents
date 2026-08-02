@@ -11,8 +11,8 @@
 # re-sources the env, reads live game state, and figures out the off-turn team
 # and an unrevealed word itself — you type the verb, nothing else.
 #
-# Verbs: check | start | beat2 | beat3 | beat4 | beat5 | grant | guest-guess
-#        revoke | cleanup | status | relaunch
+# Verbs: check | start | beat2 | beat3 | beat4 | beat5 | freeze | grant
+#        guest-guess | revoke | unfreeze | cleanup | status | relaunch
 #
 #aws ssm start-session --target i-0b952f691aa3efe83 --profile wrm-dev --region us-east-2
 #sudo su - ubuntu
@@ -273,8 +273,11 @@ _resolve_pace() {
 # per-game match needs a boundary or `--game bsideslv-live` also kills
 # `--game bsideslv-live-2` (verified on the box: 28 matches vs 16 with a boundary).
 AGENT_PAT='^[^ ]*(npm|node) .*--name [a-z-]+ --game'
+# Operatives only — `freeze` stops these to park the board on a live clue.
+AGENT_PAT_OPERATIVE='^[^ ]*(npm|node) .*--name [a-z-]+-operative --game'
 _stop_agents() {
-  local n
+  local pat="${1:-$AGENT_PAT}" n
+  local AGENT_PAT="$pat"   # everything below matches on the requested set
   n="$(pgrep -fc -- "$AGENT_PAT" 2>/dev/null)" || n=0
   if [ "${n:-0}" -gt 0 ]; then
     pkill -f -- "$AGENT_PAT" 2>/dev/null
@@ -291,17 +294,19 @@ _stop_agents() {
   fi
 }
 
-# Launch the four agents against $GAME. Shared by `start` and `relaunch` so the
-# contingency path can't drift from the one rehearsed.
+# Launch agents against $GAME — all four by default, or the roles named in $1
+# (used by `unfreeze` to bring back just the operatives). Shared by start and
+# relaunch so the contingency path can't drift from the one rehearsed.
 _launch_agents() {
+  local roles="${1:-red-spymaster red-operative blue-spymaster blue-operative}"
   _resolve_pace
   if [ "$DEMO_PACE" = auto ] && [ -n "$LLM_PING_ERR" ]; then
     printf '\n\033[1;31m!! LLM UNREACHABLE: %s\033[0m\n' "$LLM_PING_ERR" >&2
     note "   agents will run SCRIPTED — no 🧠 thinking, no real clues."
     note "   pacing to ${RESOLVED_PACE}ms so the game still reads at a human cadence."
   fi
-  banner "launch four LLM agents (detached; logs in /tmp/demo-agent-*.log; pace ${RESOLVED_PACE}ms/move)"
-  for a in red-spymaster red-operative blue-spymaster blue-operative; do
+  banner "launch agents: $roles (detached; logs in /tmp/demo-agent-*.log; pace ${RESOLVED_PACE}ms/move)"
+  for a in $roles; do
     setsid bash -c "cd '$ROOT'; set -a; source infra/.env; set +a; \
       export ENGINE_URL='$ENGINE_URL'; \
       npm run agent -w @atproto-agents/agents -- --name $a --game $GAME --brain llm --pace $RESOLVED_PACE" \
@@ -446,6 +451,43 @@ beat5) # federation grants voice, not authority: guest speaks, then denied
   node scripts/guest-move.mjs "$GAME" "$word" --why "I reveal the assassin"
   ;;
 
+freeze) # park the board on a live clue so the closer has no time pressure
+  _require_game
+  banner "FREEZE — park the board on a live clue"
+  note "an ACCEPTED guest guess needs phase=awaiting_guesses. Measured on this box,"
+  note "that window is only ~26s wide (25-32s across five turns) because the"
+  note "operatives consume each clue. Stopping them holds it open indefinitely."
+  ph="$(_state phase)"
+  if [ "$ph" != awaiting_guesses ]; then
+    printf 'waiting for a clue to land (currently %s) ' "$ph"
+    for _ in $(seq 1 60); do          # ~2 minutes
+      sleep 2
+      ph="$(_state phase)"
+      [ "$ph" = awaiting_guesses ] && break
+      [ "$ph" = finished ] && { echo; die "game finished before a clue landed — './demo relaunch' for a fresh one."; }
+      printf '.'
+    done
+    echo
+    [ "$ph" = awaiting_guesses ] || die "no clue landed in 2 minutes — are the agents up? ('./demo status')"
+  fi
+  # Operatives only: with nobody guessing, the turn never ends and the clue stays
+  # live. The spymasters stay up but go idle — nothing will ask them for a clue.
+  _stop_agents "$AGENT_PAT_OPERATIVE"
+  note "board parked: turn=$(_state turn) phase=$(_state phase) — the clue stays live."
+  note "'./demo guest-guess' would submit: $(_state unrevealed)"
+  note "(check that against the key card from beat 3 — an accepted guess on the"
+  note " assassin ends the game instantly. DEMO_GUEST_WORD is not wired up; to"
+  note " use a different word run: node scripts/guest-move.mjs $GAME <WORD>)"
+  note "'./demo unfreeze' resumes play; './demo cleanup' ends the show."
+  ;;
+
+unfreeze) # resume play after a freeze (rehearsals; not usually needed on stage)
+  _require_game
+  banner "UNFREEZE — bring the operatives back on $GAME"
+  _launch_agents "red-operative blue-operative"
+  note "spymasters were never stopped; play resumes on the current clue."
+  ;;
+
 grant) # the closer, authority only: grant the guest's tuple, show before -> after
   _require_game
   banner "CLOSER — gate FGA (must be 200)"
@@ -500,11 +542,14 @@ demo.sh — live BSidesLV run, one verb per beat.
   ./demo beat3     role-scoped data        (operative key denied, spymaster allowed)
   ./demo beat4     separation of duties    (spymaster guess -> denied)
   ./demo beat5       federation = voice      (guest speaks, then denied)
+  ./demo freeze      park the board          (wait for a live clue, stop the operatives —
+                     removes the ~26s window the closer otherwise has to hit)
   ./demo grant       the closer              (grant tuple only -> before/after diff)
   ./demo guest-guess the action              (guest submits: accepted if granted, else denied)
   ./demo revoke      the kill switch         (revoke tuple only -> before/after diff)
   ./demo cleanup     stop agents + clean fga (for the ACTIVE game)
   ./demo status      game / turn / phase / unrevealed count
+  ./demo unfreeze    resume play after a freeze (rehearsals)
   ./demo relaunch    game died mid-beats: fresh id, new game, agents relaunched.
                      Later verbs follow the new id automatically — no DEMO_GAME.
 
