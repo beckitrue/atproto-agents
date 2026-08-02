@@ -184,18 +184,37 @@ Restore afterwards (off stage): re-grant the tuple —
 | Conference wifi dies | agent panes error on fetch | Phone hotspot; agents/engine reconnect on next poll. If still dead → backup video |
 | Engine (EC2) unreachable | `curl $ENGINE_URL` fails pre-show | Local fallback: `PORT=8091 node packages/engine/dist/index.js`, `export ENGINE_URL=http://localhost:8091`, observer proxy follows; audience loses nothing except attendee API access |
 | Posts not appearing on bsky.app | records exist on PDS but AppView stale | Show the PDS directly: `listRecords` URL (bookmark it); mirrors usually catch up in seconds |
-| Game ends mid-beats (assassin) | `game over` in panes | `node scripts/new-game.mjs bsideslv-live-2` and relaunch agent panes — under a minute; beats resume on the new game |
+| Game ends mid-beats (assassin) | `game over` in panes | `./scripts/demo.sh relaunch` — picks the next free id, restarts all four agents, and every later verb follows it with no `DEMO_GAME` needed. **A game id is single-use:** games live in an in-memory map with no delete, so re-running `start` on `bsideslv-live` returns `409 game exists`. Only an engine restart reclaims a spent id. Manual equivalent: `node scripts/new-game.mjs bsideslv-live-2` + relaunch the agent panes |
 | Guest accepted before grant | tuple left over from rehearsal | Pre-show checklist includes cleanup; live: `grant-guest.mjs <game> --revoke` and rerun |
 | `FGA unreachable at http://localhost:8080` | **laptop suspended** — SSM tunnel died with it (also: window running the session was closed) | Re-open the port-forward, confirm `/stores` → `200`, rerun the grant. Verified failure mode: two takes of the backup video died this way, one mid-recording |
 
 ## Post-show
 
-- [ ] `node scripts/cleanup-fga-game.mjs bsideslv-live` (+ `--revoke` the guest if granted) — this is the whole cleanup; nothing to deactivate on the guest's side, its identity is its own
+- [ ] `./scripts/demo.sh cleanup` — stops the agents and cleans FGA. **It cleans the ACTIVE game only.** With no `DEMO_GAME` set and no state file it defaults to `bsideslv-live`, so if the show ended on a relaunched id (`bsideslv-live-2`, a rehearsal game, …) that game's tuples are left behind and the output still reads like a success — `0 deleted` against an already-empty game. `./scripts/demo.sh status` shows which game is active; pass `DEMO_GAME=<id>` to clean any other. Underlying command: `node scripts/cleanup-fga-game.mjs <game>` (+ `--revoke` the guest if granted). Nothing to deactivate on the guest's side — its identity is its own
 - [ ] Leave the box up — the pitch was "federate your agents in"; attendees will
 
 If you want to dump active tuples:
 
 ```bash
-curl -s localhost:8080/stores | jq -r '.stores[] | select(.name=="codenames") | .id' # Gets the store ID
-curl -s "localhost:8080/stores/<store id>/read" -H 'content-type: application/json' -d '{}' | jq '.tuples[].key' # Dump the tuples for that store
+SID=$(curl -s localhost:8080/stores | jq -r '.stores[] | select(.name=="codenames") | .id')
+
+# One game — always exact, and what you want when verifying a game is clean.
+curl -s "localhost:8080/stores/$SID/read" -H 'content-type: application/json' \
+  -d '{"tuple_key":{"object":"game:bsideslv-live"}}' | jq '.tuples[].key'
 ```
+
+> ⚠️ **An unfiltered read is paginated and will lie to you.** `-d '{}'` returns
+> only the first page plus a `continuation_token`, with nothing in the output to
+> signal that the list was cut short — a game whose tuples fall on page two looks
+> perfectly clean. Verified: a store with 9 games returned 50 tuples and silently
+> omitted the one being checked. Either filter by object as above, or follow the
+> token:
+>
+> ```bash
+> tok=""; while :; do
+>   r=$(curl -s "localhost:8080/stores/$SID/read" -H 'content-type: application/json' \
+>        -d "{\"continuation_token\":\"$tok\"}")
+>   echo "$r" | jq -r '.tuples[].key | "\(.object)  \(.relation)  \(.user)"'
+>   tok=$(echo "$r" | jq -r '.continuation_token // ""'); [ -n "$tok" ] || break
+> done
+> ```
