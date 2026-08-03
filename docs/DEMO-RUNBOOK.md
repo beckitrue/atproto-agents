@@ -19,6 +19,51 @@ Screen layout (one shared display):
 | Browser: observer | Board + decision log — [observer.beckitrue.com](https://observer.beckitrue.com/) (`?game=<id>`) | throughout |
 | Terminal: `grant-guest` output | Tuples on the game, printed before → after each write (OpenFGA has no hosted UI) | grant, kill |
 | Browser: Bluesky | Referee feed + an agent profile + starter pack | beats, closing |
+| Firehose pane (optional) | Live network records — see *Firehose filter* below | beats, beat 5 especially |
+
+### Firehose filter
+
+Watch the game on the public network with a lexicon filter, not an identity
+list — this is what makes beat 5 land. You never enumerate the guest's DID; a
+stranger's PDS shows up in the pane because it wrote *your* lexicon.
+
+```
+wss://jetstream2.us-east.bsky.network/subscribe?wantedCollections=com.beckitrue.codenames.clue&wantedCollections=com.beckitrue.codenames.guess&wantedCollections=com.beckitrue.codenames.pass&wantedCollections=com.beckitrue.codenames.deliberate&wantedCollections=com.beckitrue.codenames.gameState
+```
+
+Verified by replaying a real run through Jetstream: 47 events across the closer
+window — 6 `clue`, 12 `guess`, 4 `pass`, 25 `gameState` — with the guest's
+`com.beckitrue.codenames.guess` among them.
+
+> ⚠️ **List every collection; a prefix silently matches nothing.**
+> `wantedCollections=com.beckitrue.codenames` looks right, connects fine, and
+> streams **zero events** — Jetstream treats it as a literal NSID, not a prefix.
+> Tested side by side against the same replay: prefix `0 events`, explicit list
+> `47`. A filter that returns nothing is indistinguishable from a quiet network.
+
+Both PDSes reach the same public relay — the agents on `pds.beckitrue.com` and
+the guest on `porcini.us-east.host.bsky.network` — so one pane covers the whole
+cast. **Do not scope the pane to your own PDS or relay:** every beat still looks
+correct and beat 5 loses its evidence, which is the one beat where a foreign PDS
+is the entire point.
+
+Variants:
+
+- **Guest only, everything it writes** — `?wantedDids=did:plc:hwp2bnldopc4e6xgh34wz5yu`
+  with no collection filter. Shows both records per move: the signed
+  `com.beckitrue.codenames.guess` *and* its `app.bsky.feed.post` mirror.
+- **Named cast** — `wantedDids` for referee `did:plc:xgdzu5egqclsjtiwiv7rkf2k`,
+  red-spymaster `y23rxwfoym64wg3xtf7xtpqg`, blue-spymaster `utqzhjtydl26qrmicatnr7a3`,
+  red-operative `4vfjuj6rnbq3bcqual3sikib`, blue-operative `gvzsjft7lqwc3ujo4rzqb22u`,
+  guest `hwp2bnldopc4e6xgh34wz5yu`. Note `wantedDids` and `wantedCollections`
+  **intersect** — combining them narrows, it does not widen.
+
+If the pane looks empty mid-show, check the guest published before blaming the
+filter — the records and their Bluesky mirrors are on a real PDS:
+
+```bash
+curl -s "https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=imateapot.dev&limit=5" | jq -r '.feed[].post.record.text'
+```
 
 ## Pre-flight
 
@@ -44,8 +89,59 @@ Screen layout (one shared display):
       confirm: `curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/stores` → `200`
 - [ ] Observer running (`npm run dev --workspace @atproto-agents/observer`, vite proxy target set to `$ENGINE_URL`)
 - [ ] Phone hotspot tested (wifi fallback #1); backup video queued (fallback #2)
+- [ ] **Reset the stage id — see below. Rehearsals leave it unusable.**
+
+### Reset the stage id (T-1 hour, on the box)
+
+Every rehearsal burns `bsideslv-live` in two independent places, and clearing
+only one of them fails in a way that looks like the other problem:
+
+| what a rehearsal leaves | where it lives | symptom if not cleared |
+|---|---|---|
+| the game object | engine's in-memory map, no delete route | `409 game exists` |
+| the role tuples | OpenFGA → **Postgres, survives an engine restart** | `500 internal error` |
+
+So **both**, in this order:
+
+```bash
+cd /home/ubuntu/atproto-agents
+DEMO_GAME=bsideslv-live   ./scripts/demo.sh cleanup     # tuples for the stage id
+DEMO_GAME=bsideslv-live-2 ./scripts/demo.sh cleanup     # and any relaunch ids used
+docker compose -f infra/docker-compose.yml restart engine   # frees every spent id
+curl -s -o /dev/null -w '%{http_code}\n' $ENGINE_URL/games  # 200 (502 for ~5s first)
+```
+
+Cleanup without the restart → `409`. Restart without the cleanup → `500`. A
+`start` that dies **after** creating the game still burns the id, so an aborted
+run costs exactly as much as a completed one.
+
+`./scripts/demo.sh check` reports the LLM, build, registry and active game, but
+**does not check whether the stage id is free** — do this reset regardless of
+what `check` says.
 
 ## Act 0 — start the game (2 min)
+
+Run on the box, from the repo root:
+
+```bash
+./scripts/demo.sh check                            # green, and exits non-zero if not
+DEMO_GAME=bsideslv-live ./scripts/demo.sh start    # game + all four agents
+```
+
+**The `DEMO_GAME=` prefix is required on this one command.** `start` and
+`relaunch` write the active id to `/tmp/demo-current-game`, and every later verb
+reads it — so the beats, `freeze`, `grant`, `guest-guess`, `revoke` and
+`cleanup` all follow the right game with no env var. But that file survives from
+the last rehearsal. Start without the prefix and you silently run the whole talk
+on a leftover id: every banner says `[game: …]`, every beat works, and it is not
+the game on the observer. `./scripts/demo.sh status` shows the active id and
+where it came from (`default` / `DEMO_GAME override` / `last start/relaunch`).
+
+Do **not** export `DEMO_GAME` — an exported value outranks the state file, so it
+would survive a `relaunch` and point the later beats at the dead game.
+
+<details>
+<summary>Manual fallback, if <code>demo.sh</code> is unavailable</summary>
 
 ```bash
 node scripts/new-game.mjs bsideslv-live        # note which team goes first
@@ -56,6 +152,13 @@ npm run agent -w @atproto-agents/agents -- --name red-operative  --game bsideslv
 npm run agent -w @atproto-agents/agents -- --name blue-spymaster --game bsideslv-live --brain llm
 npm run agent -w @atproto-agents/agents -- --name blue-operative --game bsideslv-live --brain llm
 ```
+
+This path skips what `demo.sh` does for you: the live API-key ping, pacing
+chosen from whether the LLM actually answers (3000ms live / 9000ms scripted),
+the rebuild-if-stale check, and the state file. A stale key here degrades every
+agent to the scripted brain **silently** — dull clues, no 🧠 thinking, and no
+error anywhere.
+</details>
 
 Narrator: each pane is an agent with its own DID and its own repo — it signs
 its own token, no IdP in the loop. Behind the scenes the engine just wrote each
@@ -124,7 +227,39 @@ nobody gave it *authority*. (In the observer's firehose column it shows as an
 *unrecognized* DID — a counter, not rendered reasoning; its full post is in the
 Bluesky app / starter pack.)
 
+**Point at the firehose pane here.** The guest writes two records per move — the
+signed `com.beckitrue.codenames.guess` and an `app.bsky.feed.post` mirror — from
+a PDS you do not run, and both reach the public relay unaided. If the pane is
+filtered by lexicon (see *Firehose filter*), the guest appears in it without you
+ever having listed its DID. That is the beat, visible rather than asserted.
+
+If the pane shows nothing here while the earlier beats scrolled fine, the filter
+is scoped to your own PDS or uses a prefix — not a federation failure. Verify
+with the `getAuthorFeed` one-liner in *Firehose filter* and carry on.
+
 ## The live grant (the closer)
+
+**Freeze the board first — `./scripts/demo.sh freeze`.**
+
+An ACCEPTED guest guess needs `phase=awaiting_guesses`, i.e. a clue that no
+operative has consumed yet. Measured on this box across five consecutive turns,
+that window is **25–32 seconds wide** (median 26s) — the operatives take a clue,
+guess twice and pass, and it shuts. Hitting that while narrating is not a bet
+worth taking, and a missed window does not look like a timing problem on stage:
+the guest guess comes back `denied_rules — no active clue to guess against`,
+which reads like the grant failed when authority is in fact working perfectly.
+(`denied_authz` = FGA said no. `denied_rules` = FGA said yes, the game said no.
+Only the first means the grant is broken.)
+
+`freeze` waits for a clue to land, then stops **only the operatives**. With
+nobody guessing, the turn never ends and the clue stays live indefinitely, so
+the whole closer runs at narration pace. The spymasters stay up and idle. It
+also removes two other stage risks: the board stops moving while you talk about
+authority, and the game can no longer end mid-closer (both observed rehearsals
+ended on an assassin around the 5-minute mark).
+
+`freeze` prints the word `guest-guess` will submit — check it against the key
+card from beat 3. An accepted guess on the assassin ends the game instantly.
 
 The write must be seen — and OpenFGA has no dashboard, so `grant-guest` itself
 prints the game's tuples **before → after**: the guest's `active_guesser` row
@@ -184,11 +319,41 @@ Restore afterwards (off stage): re-grant the tuple —
 | Conference wifi dies | agent panes error on fetch | Phone hotspot; agents/engine reconnect on next poll. If still dead → backup video |
 | Engine (EC2) unreachable | `curl $ENGINE_URL` fails pre-show | Local fallback: `PORT=8091 node packages/engine/dist/index.js`, `export ENGINE_URL=http://localhost:8091`, observer proxy follows; audience loses nothing except attendee API access |
 | Posts not appearing on bsky.app | records exist on PDS but AppView stale | Show the PDS directly: `listRecords` URL (bookmark it); mirrors usually catch up in seconds |
-| Game ends mid-beats (assassin) | `game over` in panes | `node scripts/new-game.mjs bsideslv-live-2` and relaunch agent panes — under a minute; beats resume on the new game |
+| Game ends mid-beats (assassin) | `game over` in panes | `./scripts/demo.sh relaunch` — next free id, all four agents restarted, later verbs follow it automatically. **A game id is single-use** (in-memory map, no delete), so re-running `start` on the same id returns `409`. Manual equivalent: `node scripts/new-game.mjs bsideslv-live-2` + relaunch the agent panes |
+| `start` → `409 game exists` | id already used this session | `./scripts/demo.sh relaunch` (fastest). Reclaiming the *same* id needs an engine restart **and** `DEMO_GAME=<id> ./scripts/demo.sh cleanup` — see *Reset the stage id* |
+| `start` → `500 internal error` | **stale FGA tuples**, not a broken engine | The tuples outlive an engine restart (Postgres), so recreating the id rewrites rows OpenFGA already has. `DEMO_GAME=<id> ./scripts/demo.sh cleanup` then `start`, or `relaunch` to sidestep. Confirm: `docker compose -f infra/docker-compose.yml logs engine --tail 50 \| grep -i fga` → `cannot write a tuple which already exists` |
+| Guest guess denied at the closer | `denied_rules — no active clue` | **The grant is fine** — FGA let it through and the *game* refused: no live clue. `denied_authz` is the broken-grant symptom; `denied_rules` is not. Run `./scripts/demo.sh freeze` and retry |
+| Beats hitting the wrong game | banners name an id you don't expect | The state file is stale. `./scripts/demo.sh status` shows the active id and its source; `DEMO_GAME=<id> ./scripts/demo.sh start` resets it |
 | Guest accepted before grant | tuple left over from rehearsal | Pre-show checklist includes cleanup; live: `grant-guest.mjs <game> --revoke` and rerun |
 | `FGA unreachable at http://localhost:8080` | **laptop suspended** — SSM tunnel died with it (also: window running the session was closed) | Re-open the port-forward, confirm `/stores` → `200`, rerun the grant. Verified failure mode: two takes of the backup video died this way, one mid-recording |
 
 ## Post-show
 
-- [ ] `node scripts/cleanup-fga-game.mjs bsideslv-live` (+ `--revoke` the guest if granted) — this is the whole cleanup; nothing to deactivate on the guest's side, its identity is its own
+- [ ] `./scripts/demo.sh cleanup` — stops the agents and cleans FGA. **It cleans the ACTIVE game only.** With no `DEMO_GAME` set and no state file it defaults to `bsideslv-live`, so if the show ended on a relaunched id (`bsideslv-live-2`, a rehearsal game, …) that game's tuples are left behind and the output still reads like a success — `0 deleted` against an already-empty game. `./scripts/demo.sh status` shows which game is active; pass `DEMO_GAME=<id>` to clean any other. Underlying command: `node scripts/cleanup-fga-game.mjs <game>` (+ `--revoke` the guest if granted). Nothing to deactivate on the guest's side — its identity is its own
 - [ ] Leave the box up — the pitch was "federate your agents in"; attendees will
+
+If you want to dump active tuples:
+
+```bash
+SID=$(curl -s localhost:8080/stores | jq -r '.stores[] | select(.name=="codenames") | .id')
+
+# One game — always exact, and what you want when verifying a game is clean.
+curl -s "localhost:8080/stores/$SID/read" -H 'content-type: application/json' \
+  -d '{"tuple_key":{"object":"game:bsideslv-live"}}' | jq '.tuples[].key'
+```
+
+> ⚠️ **An unfiltered read is paginated and will lie to you.** `-d '{}'` returns
+> only the first page plus a `continuation_token`, with nothing in the output to
+> signal that the list was cut short — a game whose tuples fall on page two looks
+> perfectly clean. Verified: a store with 9 games returned 50 tuples and silently
+> omitted the one being checked. Either filter by object as above, or follow the
+> token:
+>
+> ```bash
+> tok=""; while :; do
+>   r=$(curl -s "localhost:8080/stores/$SID/read" -H 'content-type: application/json' \
+>        -d "{\"continuation_token\":\"$tok\"}")
+>   echo "$r" | jq -r '.tuples[].key | "\(.object)  \(.relation)  \(.user)"'
+>   tok=$(echo "$r" | jq -r '.continuation_token // ""'); [ -n "$tok" ] || break
+> done
+> ```
