@@ -24,9 +24,12 @@
 #./scripts/demo.sh beat3     # operative key ⛔, spymaster key ✅
 #./scripts/demo.sh beat4     # spymaster guess                → ⛔
 #./scripts/demo.sh beat5     # guest speaks, federates        → ⛔
+#./scripts/demo.sh freeze     
 #./scripts/demo.sh grant       # grant tuple only (before→after diff)
 #./scripts/demo.sh guest-guess # imateapot submits             → ✅ (granted) / ⛔ (revoked)
 #./scripts/demo.sh revoke      # revoke tuple only (before→after diff)
+#./scripts/demo.sh guest-guess # imateapot submits             → ✅ (granted) / ⛔ (revoked)
+#./scripts/demo.sh unfreeze     
 #./scripts/demo.sh cleanup     # stop agents + clean FGA
 #
 # Config (override via env if you must):
